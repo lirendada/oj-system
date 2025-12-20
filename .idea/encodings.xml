@@ -1,4 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="Encoding" defaultCharsetForPropertiesFiles="UTF-8" />
+  <component name="Encoding" defaultCharsetForPropertiesFiles="UTF-8">
+    <file url="file://$PROJECT_DIR$/api/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/api/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/common/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/common/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/gateway/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/gateway/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/modules/job/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/modules/job/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/modules/judge/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/modules/judge/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/modules/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/modules/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/modules/user/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/modules/user/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
+  </component>
 </project>
