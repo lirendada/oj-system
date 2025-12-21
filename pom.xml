@@ -34,6 +34,7 @@
 
         <common-core.version>1.0-SNAPSHOT</common-core.version>
         <common-web.version>1.0-SNAPSHOT</common-web.version>
+        <common-swagger.version>1.0-SNAPSHOT</common-swagger.version>
     </properties>
 
     <dependencies>

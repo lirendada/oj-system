@@ -30,12 +30,7 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>com.liren</groupId>
-            <artifactId>common-core</artifactId>
-            <version>${common-core.version}</version>
-        </dependency>
-
+        <!-- validation依赖-->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
@@ -44,8 +39,20 @@
 
         <dependency>
             <groupId>com.liren</groupId>
+            <artifactId>common-core</artifactId>
+            <version>${common-core.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.liren</groupId>
             <artifactId>common-web</artifactId>
             <version>${common-web.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.liren</groupId>
+            <artifactId>common-swagger</artifactId>
+            <version>${common-swagger.version}</version>
         </dependency>
     </dependencies>
 </project>
