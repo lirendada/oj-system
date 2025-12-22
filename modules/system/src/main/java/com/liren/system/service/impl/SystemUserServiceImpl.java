@@ -31,6 +31,7 @@ public class SystemUserServiceImpl implements ISystemUserService {
         }
 
         // 到这说明用户存在，开始校验密码
+        log.info("user：{}，loginDTO: {}", user, loginDTO);
         if(!BCryptUtil.isMatch(loginDTO.getPassword(), user.getPassword())) {
             throw new SystemUserException(ResultCode.USER_PASSWORD_ERROR);
         }

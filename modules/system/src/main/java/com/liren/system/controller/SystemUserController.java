@@ -1,6 +1,7 @@
 package com.liren.system.controller;
 
 import com.liren.common.core.result.Result;
+import com.liren.common.core.utils.BCryptUtil;
 import com.liren.system.dto.LoginRequestDTO;
 import com.liren.system.service.ISystemUserService;
 import com.liren.system.vo.LoginResponseVO;
@@ -44,5 +45,10 @@ public class SystemUserController {
     })
     public Result<LoginResponseVO> login(@Valid @RequestBody LoginRequestDTO loginDTO) {
         return Result.success(systemUserService.login(loginDTO));
+    }
+
+    @RequestMapping("/test")
+    public void test() {
+        log.info(BCryptUtil.encode("123123"));
     }
 }

@@ -9,7 +9,7 @@ import lombok.*;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true, exclude = "password")
+@ToString(callSuper = true)
 @EqualsAndHashCode(callSuper = true)
 @TableName("tb_sys_user")
 public class SystemUserEntity extends BaseEntity {

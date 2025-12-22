@@ -1,6 +1,16 @@
-server:
-  port: 8003
-
 spring:
   application:
     name: system-service
+
+  profiles:
+    active: dev
+
+  cloud:
+    nacos:
+      discovery:
+        server-addr: lirendada.art:8848
+        namespace: b3187baa-a0e0-497a-a2cb-043eeeff9b09
+      config:
+        namespace: b3187baa-a0e0-497a-a2cb-043eeeff9b09
+        server-addr: lirendada.art:8848
+        file-extension: yaml

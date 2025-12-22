@@ -16,6 +16,6 @@ public class BCryptUtil {
      */
     public static boolean isMatch(String content, String encoded) {
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
-        return encoder.matches(content, encoded);
+        return encoder.matches(content, encoded.trim());
     }
 }
