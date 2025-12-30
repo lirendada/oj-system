@@ -12,6 +12,10 @@ import java.util.List;
 public class ProblemDTO {
 
     @Schema(description = "题目ID (更新时必填)")
+//    // 只有在 Update 分组下，才校验 ID 不为空
+//    @NotNull(message = "修改时ID不能为空", groups = UpdateGroup.class)
+//    // 只有在 Add 分组下，才校验 ID 必须为空
+//    @Null(message = "新增时ID必须为空", groups = AddGroup.class)
     private Long problemId;
 
     @NotBlank(message = "题目标题不能为空")

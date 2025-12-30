@@ -1,4 +1,4 @@
-package com.liren.system.entity;
+package com.liren.common.core.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;

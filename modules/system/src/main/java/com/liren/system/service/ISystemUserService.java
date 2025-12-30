@@ -1,10 +1,10 @@
 package com.liren.system.service;
 
-import com.liren.system.dto.LoginDTO;
-import com.liren.system.vo.LoginVO;
+import com.liren.system.dto.SystemUserLoginDTO;
+import com.liren.system.vo.SystemUserLoginVO;
 
 
 public interface ISystemUserService {
 
-    LoginVO login(LoginDTO loginDTO);
+    SystemUserLoginVO login(SystemUserLoginDTO systemUserLoginDTO);
 }

@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(description = "登录请求")
-public class LoginDTO {
+public class SystemUserLoginDTO {
     @NotBlank(message = "用户名不能为空")
     @Schema(description = "用户名")
     private String userAccount;
