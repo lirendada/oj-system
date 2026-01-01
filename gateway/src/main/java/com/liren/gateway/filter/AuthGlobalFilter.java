@@ -46,6 +46,7 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
 
         // 1. 白名单校验：如果是白名单接口，直接放行
         if (isWhitelist(path)) {
+            log.info("AuthGlobalFilter: path is in whitelist, pass");
             return chain.filter(exchange);
         }
 

@@ -5,11 +5,16 @@ import cn.hutool.core.collection.CollectionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.liren.common.core.constant.Constants;
+import com.liren.common.core.context.UserContext;
 import com.liren.common.core.enums.ProblemStatusEnum;
 import com.liren.common.core.result.ResultCode;
 import com.liren.problem.dto.ProblemAddDTO;
 import com.liren.problem.dto.ProblemQueryRequest;
-import com.liren.problem.entity.ProblemDetailVO;
+import com.liren.problem.dto.ProblemSubmitDTO;
+import com.liren.problem.entity.ProblemSubmitRecordEntity;
+import com.liren.problem.mapper.ProblemSubmitMapper;
+import com.liren.problem.vo.ProblemDetailVO;
 import com.liren.problem.entity.ProblemEntity;
 import com.liren.problem.entity.ProblemTagEntity;
 import com.liren.problem.entity.ProblemTagRelationEntity;
@@ -20,6 +25,7 @@ import com.liren.problem.mapper.ProblemTagRelationMapper;
 import com.liren.problem.service.IProblemService;
 import com.liren.problem.vo.ProblemTagVO;
 import com.liren.problem.vo.ProblemVO;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +41,12 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
 
     @Autowired
     private ProblemTagMapper problemTagMapper;
+
+    @Autowired
+    private ProblemSubmitMapper problemSubmitMapper;
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
 
     /**
      * 新增题目
@@ -282,10 +294,42 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
     }
 
 
+    /**
+     * 提交题目
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long submitProblem(ProblemSubmitDTO submitDTO) {
+        // 1. 校验题目是否存在
+        ProblemEntity problem = this.getById(submitDTO.getProblemId());
+        if(problem == null) {
+            throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
+        }
 
+        // 2. 保存提交记录
+        ProblemSubmitRecordEntity submitRecord = new ProblemSubmitRecordEntity();
+        submitRecord.setProblemId(submitDTO.getProblemId());
+        submitRecord.setCode(submitDTO.getCode());
+        submitRecord.setLanguage(submitDTO.getLanguage());
+        submitRecord.setContestId(submitDTO.getContestId() == null ? 0L : submitDTO.getContestId());
 
+        // 从 UserContext 获取当前登录用户
+        Long userId = UserContext.getUserId();
+        if(userId == null) {
+            throw new ProblemException(ResultCode.UNAUTHORIZED); // 实际上网关会拦截，这里是兜底
+        }
+        submitRecord.setUserId(userId);
 
+        submitRecord.setStatus(10); // 10-Wait
+        submitRecord.setJudgeResult(null); // 尚未出结果
+        problemSubmitMapper.insert(submitRecord);
 
+        // 3. 发送消息到MQ
+        // 消息内容通常发 ID 即可，消费者再去查库。或者把关键信息都发过去减少查库。
+        // 这里我们发 submitId 过去
+        rabbitTemplate.convertAndSend(Constants.JUDGE_EXCHANGE, Constants.JUDGE_ROUTING_KEY, submitRecord.getSubmitId());
+        return submitRecord.getSubmitId();
+    }
 
 
 }

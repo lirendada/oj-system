@@ -1,6 +1,5 @@
-package com.liren.problem.entity;
+package com.liren.problem.vo;
 
-import com.liren.problem.vo.ProblemVO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
