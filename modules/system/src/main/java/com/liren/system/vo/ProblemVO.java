@@ -4,47 +4,39 @@ import cn.hutool.core.bean.BeanUtil;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.liren.system.entity.ProblemEntity;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 import java.io.Serializable;
 import java.util.Date;
 import java.util.List;
 
-//TODO：补充swagger信息
 @Data
+@Schema(description = "题目VO")
 public class ProblemVO implements Serializable {
     // 必须转 String，防止前端精度丢失
     @JsonSerialize(using = ToStringSerializer.class)
+    @Schema(description = "题目ID")
     private Long problemId;
 
+    @Schema(description = "题目标题")
     private String title;
 
-    /**
-     * 难度：1-简单 2-中等 3-困难
-     * 前端拿到数字后，自己映射成文字或颜色
-     */
+    @Schema(description = "题目难度：1-简单 2-中等 3-困难")
     private Integer difficulty;
 
-    /**
-     * 标签列表
-     */
+    @Schema(description = "标签列表")
     private List<ProblemTagVO> tags;
 
-    /**
-     * 提交数
-     */
+    @Schema(description = "提交数")
     private Integer submitNum;
 
-    /**
-     * 通过数
-     */
+    @Schema(description = "通过数")
     private Integer acceptedNum;
 
-    /**
-     * 状态：0-隐藏 1-正常
-     */
+    @Schema(description = "状态：0-隐藏 1-正常")
     private Integer status;
 
-    // 列表页通常需要展示创建时间
+    @Schema(description = "题目创建时间")
     private Date createTime;
 
     /**

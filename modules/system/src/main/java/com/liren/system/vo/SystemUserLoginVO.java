@@ -1,15 +1,21 @@
 package com.liren.system.vo;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-//TODO：补充swagger信息
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
+@Schema(description = "系统用户登录VO")
 public class SystemUserLoginVO {
+    @Schema(description = "系统用户ID")
     private Long userId;
+
+    @Schema(description = "系统用户名称")
     private String userAccount;
+
+    @Schema(description = "系统用户密码")
     private String nickName;
 }

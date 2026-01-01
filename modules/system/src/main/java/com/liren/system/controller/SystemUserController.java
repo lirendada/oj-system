@@ -35,8 +35,9 @@ public class SystemUserController {
                 content = @Content(
                         mediaType = "application/json",
                         schema = @Schema(implementation = SystemUserLoginDTO.class)
+                )
             )
-    ))
+    )
     @ApiResponses(value = {
             @ApiResponse(responseCode = "6003", description = "用户不存在"),
             @ApiResponse(responseCode = "6005", description = "用户名或密码错误"),
@@ -45,23 +46,23 @@ public class SystemUserController {
         return Result.success(systemUserService.login(systemUserLoginDTO));
     }
 
-    @RequestMapping("/test")
-    public Result<String> test() {
-        String password = "123456";
-        String encoded = BCryptUtil.encode(password);
-        System.out.println("加密后的密码: " + encoded);
-
-        // 测试验证
-        boolean match = BCryptUtil.isMatch("123456", encoded);
-        System.out.println("验证结果: " + match);
-        return Result.success("test");
-    }
-
-    @GetMapping("/test/me")
-    public Result<Long> getMyId() {
-        // 直接从上下文获取 ID，不需要传参
-        Long userId = UserContext.getUserId();
-        System.out.println("当前登录用户ID: " + userId);
-        return Result.success(userId);
-    }
+//    @RequestMapping("/test")
+//    public Result<String> test() {
+//        String password = "123456";
+//        String encoded = BCryptUtil.encode(password);
+//        System.out.println("加密后的密码: " + encoded);
+//
+//        // 测试验证
+//        boolean match = BCryptUtil.isMatch("123456", encoded);
+//        System.out.println("验证结果: " + match);
+//        return Result.success("test");
+//    }
+//
+//    @GetMapping("/test/me")
+//    public Result<Long> getMyId() {
+//        // 直接从上下文获取 ID，不需要传参
+//        Long userId = UserContext.getUserId();
+//        System.out.println("当前登录用户ID: " + userId);
+//        return Result.success(userId);
+//    }
 }
