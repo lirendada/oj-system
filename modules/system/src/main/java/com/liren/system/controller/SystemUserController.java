@@ -1,8 +1,6 @@
 package com.liren.system.controller;
 
-import com.liren.common.core.context.UserContext;
 import com.liren.common.core.result.Result;
-import com.liren.common.core.utils.BCryptUtil;
 import com.liren.system.dto.SystemUserLoginDTO;
 import com.liren.system.service.ISystemUserService;
 import com.liren.system.vo.SystemUserLoginVO;

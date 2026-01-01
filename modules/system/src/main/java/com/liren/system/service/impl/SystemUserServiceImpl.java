@@ -12,7 +12,6 @@ import com.liren.system.mapper.SystemUserMapper;
 import com.liren.system.service.ISystemUserService;
 import com.liren.system.vo.SystemUserLoginVO;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Slf4j

@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration  scan="false" debug="false">
+
+    <!-- springProfile作用：进行环境隔离，区分开发环境和生产环境 -->
+    <springProfile name="dev">
+
+        <!-- appender是输出器，这里输出到控制台，核心是这个class，name只是下面要用于绑定日志级别的标识符 -->
+        <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+            <!-- encoder作用：日志格式 -->
+            <encoder>
+                <pattern>
+                    %d{HH:mm:ss.SSS} [%yellow(%thread)] %highlight(%-5level) %cyan(%logger{36}) - [%method,%line]
+                    - %msg%n
+                </pattern>
+            </encoder>
+        </appender>
+
+        <!-- root日志级别设置为info，所有日志从 INFO 级别开始往上打印，并且输出到 console -->
+        <root level="info">
+            <appender-ref ref="console" />
+        </root>
+    </springProfile>
+
+    <springProfile name="prod,test">
+        <!-- 定义变量 -->
+        <property name="logback.logErrorDir" value="/var/logs/${spring.application.name}/error"/>
+        <property name="logback.logInfoDir" value="/var/logs/${spring.application.name}/info"/>
+
+        <!-- 给整个 Logback 日志上下文起“名字”-->
+        <contextName>${spring.application.name}</contextName>
+
+        <!-- ERROR级别的日志配置如下 -->
+        <appender name="fileErrorLog" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <!--
+                日志名称，如果没有File 属性，那么只会使用FileNamePattern的文件路径规则
+                如果同时有<File>和<FileNamePattern>，那么当天日志是<File>，明天会自动把今天
+                的日志改名为今天的日期。即，<File> 的日志都是当天的。
+            -->
+            <File>${logback.logErrorDir}/error.log</File>
+
+            <!-- 日志level过滤器，保证error.xxx.log中只记录ERROR级别的日志-->
+            <filter class="ch.qos.logback.classic.filter.LevelFilter">
+                <level>ERROR</level>
+                <onMatch>ACCEPT</onMatch>
+                <onMismatch>DENY</onMismatch>
+            </filter>
+
+            <!--滚动策略（按天滚动），按照时间滚动 TimeBasedRollingPolicy-->
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <!--文件路径,定义了日志的切分方式——把每一天的日志归档到一个文件中,以防止日志填满整个磁盘空间-->
+                <FileNamePattern>${logback.logErrorDir}/error.%d{yyyy-MM-dd}.log</FileNamePattern>
+
+                <!--只保留最近10天的日志-->
+                <maxHistory>10</maxHistory>
+            </rollingPolicy>
+
+            <!--日志输出编码格式化-->
+            <encoder>
+                <charset>UTF-8</charset>
+                <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <!--INFO级别的日志配置如下-->
+        <appender name="fileInfoLog" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <!--日志名称，如果没有File 属性，那么只会使用FileNamePattern的文件路径规则
+                如果同时有<File>和<FileNamePattern>，那么当天日志是<File>，明天会自动把今天
+                的日志改名为今天的日期。即，<File> 的日志都是当天的。
+            -->
+            <File>${logback.logInfoDir}/info.log</File>
+
+            <!--滚动策略，按照时间滚动 TimeBasedRollingPolicy-->
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <!--文件路径,定义了日志的切分方式——把每一天的日志归档到一个文件中,以防止日志填满整个磁盘空间-->
+                <FileNamePattern>${logback.logInfoDir}/info.%d{yyyy-MM-dd}.log</FileNamePattern>
+
+                <!--只保留最近10天的日志-->
+                <maxHistory>10</maxHistory>
+            </rollingPolicy>
+
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>INFO</level>
+                <onMatch>ACCEPT</onMatch>
+                <onMismatch>DENY</onMismatch>
+            </filter>
+
+            <!--日志输出编码格式化-->
+            <encoder>
+                <charset>UTF-8</charset>
+                <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            </encoder>
+        </appender>
+
+        <!-- 所有日志 ≥INFO 的都会触发 -->
+        <root level="info">
+            <appender-ref ref="fileErrorLog" />
+            <appender-ref ref="fileInfoLog"/>
+        </root>
+    </springProfile>
+</configuration>

@@ -16,6 +16,8 @@
         <module>job</module>
         <module>judge</module>
         <module>system</module>
+        <module>problem</module>
+        <module>contest</module>
     </modules>
 
     <properties>

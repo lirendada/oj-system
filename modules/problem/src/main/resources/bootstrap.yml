@@ -1,0 +1,21 @@
+server:
+  port: 8006
+
+spring:
+  application:
+    name: problem-service
+
+  profiles:
+    active: dev
+  cloud:
+    nacos:
+      discovery:
+        server-addr: lirendada.art:8848
+        namespace: 3e8d6cf0-32cd-43c0-8279-9fda3da2265f
+      config:
+        server-addr: lirendada.art:8848
+        namespace: 3e8d6cf0-32cd-43c0-8279-9fda3da2265f
+        file-extension: yaml
+        shared-configs:
+          - data-id: common.yaml
+            refresh: true
