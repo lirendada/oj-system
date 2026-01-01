@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.liren.common.core.result.Result;
 import com.liren.problem.dto.ProblemAddDTO;
 import com.liren.problem.dto.ProblemQueryRequest;
+import com.liren.problem.entity.ProblemDetailVO;
 import com.liren.problem.service.IProblemService;
 import com.liren.problem.vo.ProblemVO;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,10 +13,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/problem")
@@ -53,7 +51,7 @@ public class ProblemController {
                     )
             )
     )
-    public Result<Page<ProblemVO>> listProblemVOByPage(@RequestBody ProblemQueryRequest queryRequest) {
+    public Result<Page<ProblemVO>> getProblemList(@RequestBody ProblemQueryRequest queryRequest) {
         // 1. 限制爬虫/恶意请求
         long size = queryRequest.getPageSize();
         if (size > 20) {
@@ -64,5 +62,11 @@ public class ProblemController {
         Page<ProblemVO> page = problemService.getProblemList(queryRequest);
 
         return Result.success(page);
+    }
+
+    @GetMapping("/detail/{problemId}")
+    @Operation(summary = "获取题目详情", description = "C端展示题目详情，包含描述、样例、标签等")
+    public Result<ProblemDetailVO> getProblemDetail(@PathVariable("problemId") Long problemId) {
+        return Result.success(problemService.getProblemDetail(problemId));
     }
 }

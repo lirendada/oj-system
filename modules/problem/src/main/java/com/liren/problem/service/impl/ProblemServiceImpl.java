@@ -9,6 +9,7 @@ import com.liren.common.core.enums.ProblemStatusEnum;
 import com.liren.common.core.result.ResultCode;
 import com.liren.problem.dto.ProblemAddDTO;
 import com.liren.problem.dto.ProblemQueryRequest;
+import com.liren.problem.entity.ProblemDetailVO;
 import com.liren.problem.entity.ProblemEntity;
 import com.liren.problem.entity.ProblemTagEntity;
 import com.liren.problem.entity.ProblemTagRelationEntity;
@@ -37,7 +38,6 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
 
     /**
      * 新增题目
-     * @param problemAddDTO
      */
     @Override
     @Transactional(rollbackFor = Exception.class) // 开启事务，保证原子性
@@ -90,6 +90,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
 
         return true;
     }
+
 
     /**
      * 分页查询题目列表 (支持多标签筛选 + 批量填充)
@@ -236,4 +237,55 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         problemVOPage.setRecords(collect);
         return problemVOPage;
     }
+
+
+    /**
+     * 获取题目详情
+     */
+    @Override
+    public ProblemDetailVO getProblemDetail(Long problemId) {
+        // 1. 先查出problemEntity
+        ProblemEntity problemEntity = this.getById(problemId);
+        if(problemEntity == null) {
+            throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
+        }
+
+        // 2. 检查题目状态 (如果是C端用户，不能看 hidden 的题目)
+        // 暂时假设所有调这个接口的都是C端，或者是管理员预览。
+        // 如果严格一点，可以结合 UserContext 判断：如果是普通用户 且 status=0 -> 抛异常
+        if (problemEntity.getStatus() == ProblemStatusEnum.HIDDEN.getCode()) {
+             throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
+            // 这里先留个 TODO，是否允许管理员预览
+        }
+
+        // 3. 转换 Bean (Entity -> DetailVO)
+        ProblemDetailVO detailVO = new ProblemDetailVO();
+        BeanUtil.copyProperties(problemEntity, detailVO);
+
+        // 4. 填充标签 (单个题目，查一次关联表即可)
+        // 4.1 查关联关系
+        LambdaQueryWrapper<ProblemTagRelationEntity> relationWrapper = new LambdaQueryWrapper<>();
+        relationWrapper.eq(ProblemTagRelationEntity::getProblemId, problemId);
+        List<ProblemTagRelationEntity> relations = problemTagRelationMapper.selectList(relationWrapper);
+
+        // 4.2 如果有标签，查详情
+        if(CollectionUtil.isNotEmpty(relations)) {
+            List<Long> tagIds = relations.stream().map(ProblemTagRelationEntity::getTagId).collect(Collectors.toList());
+
+            List<ProblemTagVO> tagVOS = problemTagMapper.selectBatchIds(tagIds).stream().map(entity -> ProblemTagVO.objToVo(entity)).collect(Collectors.toList());
+            detailVO.setTags(tagVOS);
+        } else {
+            detailVO.setTags(Collections.emptyList());
+        }
+
+        return detailVO;
+    }
+
+
+
+
+
+
+
+
 }
