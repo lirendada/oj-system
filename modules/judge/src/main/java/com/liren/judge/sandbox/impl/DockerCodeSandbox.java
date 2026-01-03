@@ -1,5 +1,6 @@
 package com.liren.judge.sandbox.impl;
 
+import cn.hutool.core.util.StrUtil;
 import com.github.dockerjava.api.DockerClient;
 import com.github.dockerjava.api.async.ResultCallback;
 import com.github.dockerjava.api.command.CreateContainerCmd;
@@ -27,9 +28,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+
+/**
+ * Docker 通用代码沙箱 (支持 Java, C++, Python)
+ */
 @Slf4j
 @Component
-public class JavaDockerCodeSandbox implements CodeSandbox {
+public class DockerCodeSandbox implements CodeSandbox {
 
     @Autowired
     private DockerClient dockerClient;
@@ -37,15 +42,46 @@ public class JavaDockerCodeSandbox implements CodeSandbox {
     @Override
     public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
         String code = executeCodeRequest.getCode();
+        String language = executeCodeRequest.getLanguage();
         List<String> inputList = executeCodeRequest.getInputList();
         String containerId = null;
 
         try {
-            // 1. 拉取镜像 (建议手动拉取，这里作为兜底)
-            // dockerClient.pullImageCmd(Constants.IMAGE).exec(new PullImageResultCallback()).awaitCompletion();
+            // 1. 预处理：根据语言确定文件名和命令
+            String sourceFileName;
+            String compileCmd;
+            String runCmdFormat; // 格式化字符串，%s 为文件名或类名
+
+            // 简单的归一化处理 (防止传过来是 "JAVA" 或 "java ")
+            String lang = language.toLowerCase().trim();
+
+            switch (lang) {
+                case "java":
+                    sourceFileName = "Main.java";
+                    compileCmd = "javac -encoding utf-8 Main.java";
+                    runCmdFormat = "java -cp . Main < input.txt";
+                    break;
+                case "cpp":
+                case "c++":
+                    sourceFileName = "main.cpp";
+                    compileCmd = "g++ -o Main main.cpp"; // 编译输出为 Main 可执行文件
+                    runCmdFormat = "./Main < input.txt";
+                    break;
+                case "python":
+                case "python3":
+                    sourceFileName = "main.py";
+                    compileCmd = null; // Python 不需要编译
+                    runCmdFormat = "python3 main.py < input.txt";
+                    break;
+                default:
+                    return ExecuteCodeResponse.builder()
+                            .status(SandboxRunStatusEnum.SYSTEM_ERROR.getCode())
+                            .message("不支持的编程语言: " + language)
+                            .build();
+            }
 
             // 2. 创建容器
-            log.info("创建容器中...");
+            log.info("创建容器中... 语言: {}", language);
             HostConfig hostConfig = new HostConfig();
             hostConfig.withMemory(Constants.SANDBOX_MEMORY_LIMIT); // 限制内存 100MB
             hostConfig.withCpuCount(Constants.SANDBOX_CPU_COUNT); // 限制 CPU 1核
@@ -67,17 +103,20 @@ public class JavaDockerCodeSandbox implements CodeSandbox {
             // 4. 将用户代码上传到容器
             // 需要先把 String 存为 Main.java 字节数组，然后打成 tar 包上传
             // 这里我们用一个辅助方法处理
-            uploadFileToContainer(containerId, "Main.java", code.getBytes(StandardCharsets.UTF_8));
+            uploadFileToContainer(containerId, sourceFileName, code.getBytes(StandardCharsets.UTF_8));
 
-            // 5. 编译代码 (javac -encoding utf-8 Main.java)
-            String compileCmd = "javac -encoding utf-8 Main.java";
-            ExecMessage compileMsg = execCmd(containerId, compileCmd.split(" "));
-            if (compileMsg.getExitValue() != 0) {
-                // 编译失败
-                return ExecuteCodeResponse.builder()
-                        .status(SandboxRunStatusEnum.COMPILE_ERROR.getCode()) // 3-编译错误
-                        .message("编译错误: " + compileMsg.getErrorMessage())
-                        .build();
+            // 5. 编译代码(如果需要)
+            if(StrUtil.isNotBlank(compileCmd)) {
+                log.info("编译中: {}", compileCmd);
+
+                // split(" ") 简单切分，对于复杂命令可能不够，但在当前场景够用
+                ExecMessage compileMsg = execCmd(containerId, compileCmd.split(" "));
+                if (compileMsg.getExitValue() != 0) {
+                    return ExecuteCodeResponse.builder()
+                            .status(SandboxRunStatusEnum.COMPILE_ERROR.getCode())
+                            .message("编译错误:\n" + compileMsg.getErrorMessage() + "\n" + compileMsg.getMessage())
+                            .build();
+                }
             }
 
             // 6. 执行代码 (针对每个输入用例)
@@ -85,19 +124,19 @@ public class JavaDockerCodeSandbox implements CodeSandbox {
             long maxTime = 0;
 
             for (String input : inputList) {
-                // 构造运行命令: java -cp . Main
-                // 注意：这里输入是通过 stdin 传进去的，docker-java 的 exec 比较难处理 stdin
-                // 简单起见，我们把输入写入临时文件，然后用重定向： java -cp . Main < input.txt
-
-                // 6.1 上传输入数据
+                // 上传输入数据（在文件中）
                 uploadFileToContainer(containerId, "input.txt", input.getBytes(StandardCharsets.UTF_8));
 
-                // 6.2 执行
-                String runCmd = "sh -c java -cp . Main < input.txt"; // 使用 sh -c 支持重定向
+                // 构造运行命令 (使用 sh -c 支持 < 重定向)
+                // 注意：runCmdFormat 已经在上面 switch 里定义好了
+                String fullRunCmd = "sh -c " + runCmdFormat;
+                log.info("执行命令: {}", fullRunCmd); // 打印实际执行的命令
+
                 StopWatch stopWatch = new StopWatch();
                 stopWatch.start();
 
-                ExecMessage runMsg = execCmd(containerId, new String[]{"sh", "-c", "java -cp . Main < input.txt"});
+                // 执行代码
+                ExecMessage runMsg = execCmd(containerId, new String[]{"sh", "-c", runCmdFormat});
 
                 stopWatch.stop();
                 long time = stopWatch.getLastTaskTimeMillis();
@@ -125,7 +164,10 @@ public class JavaDockerCodeSandbox implements CodeSandbox {
 
         } catch (Exception e) {
             log.error("沙箱执行异常", e);
-            return ExecuteCodeResponse.builder().status(SandboxRunStatusEnum.SYSTEM_ERROR.getCode()).message(e.getMessage()).build();
+            return ExecuteCodeResponse.builder()
+                    .status(SandboxRunStatusEnum.SYSTEM_ERROR.getCode())
+                    .message(e.getMessage())
+                    .build();
         } finally {
             // 8. 销毁容器 (非常重要！否则服务器内存会炸)
             if (containerId != null) {

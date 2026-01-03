@@ -28,7 +28,7 @@ public class Constants {
     /**
      * 判题机镜像名称
      */
-    public static final String SANDBOX_IMAGE = "openjdk:8-alpine";
+    public static final String SANDBOX_IMAGE = "liren-oj-sandbox:v1";
 
     /**
      * 沙箱运行超时时间 (毫秒)
