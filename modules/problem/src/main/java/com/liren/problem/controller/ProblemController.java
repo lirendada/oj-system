@@ -8,9 +8,11 @@ import com.liren.problem.dto.ProblemSubmitDTO;
 import com.liren.problem.vo.ProblemDetailVO;
 import com.liren.problem.service.IProblemService;
 import com.liren.problem.vo.ProblemVO;
+import com.liren.problem.vo.SubmitRecordVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,6 +72,10 @@ public class ProblemController {
 
     @GetMapping("/detail/{problemId}")
     @Operation(summary = "获取题目详情", description = "C端展示题目详情，包含描述、样例、标签等")
+    @ApiResponse(responseCode = "200",
+            description = "获取题目详情成功",
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ProblemDetailVO.class))
+    )
     public Result<ProblemDetailVO> getProblemDetail(@PathVariable("problemId") Long problemId) {
         return Result.success(problemService.getProblemDetail(problemId));
     }
@@ -89,5 +95,25 @@ public class ProblemController {
     )
     public Result<Long> submitProblem(@RequestBody @Valid ProblemSubmitDTO problemSubmitDTO) {
         return Result.success(problemService.submitProblem(problemSubmitDTO));
+    }
+
+
+    @GetMapping("/submit/result/{submitId}")
+    @Operation(summary = "查询提交记录详情", description = "包含代码、状态、消耗时间等。非本人查看代码会被隐藏。")
+    @ApiResponse(
+            responseCode = "200",
+            description = "提交成功，返回提交ID",
+            content = @Content(
+                    mediaType = "application/json",
+                    schema = @Schema(
+                            type = "integer",
+                            format = "int64",
+                            description = "submitId",
+                            example = "12345"
+                    )
+            )
+    )
+    public Result<SubmitRecordVO> getSubmitResult(@PathVariable("submitId") Long submitId) {
+        return Result.success(problemService.getSubmitRecord(submitId));
     }
 }

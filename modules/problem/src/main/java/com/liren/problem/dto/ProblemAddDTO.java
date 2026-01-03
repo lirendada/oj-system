@@ -1,5 +1,6 @@
 package com.liren.problem.dto;
 
+import com.liren.api.problem.dto.TestCaseDTO;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -62,4 +63,7 @@ public class ProblemAddDTO {
 
     @Schema(description = "关联的标签ID列表")
     private List<Long> tagIds;
+
+    @Schema(description = "测试用例列表")
+    private List<TestCaseDTO> testCases;
 }

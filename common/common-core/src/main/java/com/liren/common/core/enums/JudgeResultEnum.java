@@ -22,4 +22,13 @@ public enum JudgeResultEnum {
 
     private final Integer code;
     private final String message;
+
+    public static JudgeResultEnum getByCode(Integer code) {
+        for (JudgeResultEnum e : values()) {
+            if (e.code.equals(code)) {
+                return e;
+            }
+        }
+        return null;
+    }
 }

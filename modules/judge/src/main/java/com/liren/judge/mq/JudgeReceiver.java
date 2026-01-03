@@ -77,7 +77,7 @@ public class JudgeReceiver {
 
             log.info("调用 Docker 沙箱...");
             ExecuteCodeResponse executeResponse = codeSandbox.executeCode(executeRequest);
-            log.info("沙箱执行结束, 状态: {}", executeResponse.getStatus());
+            log.info("沙箱执行结束, 状态: {}", SandboxRunStatusEnum.getByCode(executeResponse.getStatus()).getMessage());
 
             // ------------------------------------------
             // 3. 结果比对 (Judge Logic)
@@ -133,7 +133,7 @@ public class JudgeReceiver {
             // ------------------------------------------
             Result<Boolean> updateResult = problemService.updateSubmitResult(updateDTO);
             if (Boolean.TRUE.equals(updateResult.getData())) {
-                log.info("判题完成并回写成功!");
+                log.info("判题完成并回写成功!，submitId: {}，代码状态：{}", submitId, JudgeResultEnum.getByCode(updateDTO.getJudgeResult()).getMessage());
             } else {
                 throw new RuntimeException("receiveJudgeMessage: 数据库更新失败: " + updateResult.getMessage());
             }

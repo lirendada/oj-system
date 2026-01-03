@@ -11,6 +11,7 @@ import com.liren.problem.dto.ProblemSubmitDTO;
 import com.liren.problem.vo.ProblemDetailVO;
 import com.liren.problem.entity.ProblemEntity;
 import com.liren.problem.vo.ProblemVO;
+import com.liren.problem.vo.SubmitRecordVO;
 
 import java.util.List;
 
@@ -33,6 +34,9 @@ public interface IProblemService extends IService<ProblemEntity> {
     // 获取测试用例
     List<TestCaseDTO> getTestCases(Long problemId);
 
-    // 获取提交记录
-    SubmitRecordDTO getSubmitRecord(Long submitId);
+    // 获取提交记录（内部接口，用于MQ拿到代码和编程语言进行操作）
+    SubmitRecordDTO getInnerSubmitRecord(Long submitId);
+
+    // 获取提交记录（外部接口，用于展示）
+    SubmitRecordVO getSubmitRecord(Long submitId);
 }

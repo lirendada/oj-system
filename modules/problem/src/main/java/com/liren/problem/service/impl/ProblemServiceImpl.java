@@ -23,6 +23,7 @@ import com.liren.problem.exception.ProblemException;
 import com.liren.problem.service.IProblemService;
 import com.liren.problem.vo.ProblemTagVO;
 import com.liren.problem.vo.ProblemVO;
+import com.liren.problem.vo.SubmitRecordVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -86,7 +87,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
             throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
         }
 
-        // 3. 处理标签关系(如果有)
+        // 3. 保存标签关系(如果有)
         Long problemId = problemEntity.getProblemId();
         List<Long> tagIds = problemAddDTO.getTagIds();
         if(CollectionUtil.isNotEmpty(tagIds)) {
@@ -101,6 +102,20 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
             for(ProblemTagRelationEntity relation : relationList) {
                 problemTagRelationMapper.insert(relation);
             }
+        }
+
+        // 4. 保存测试样例
+        List<TestCaseDTO> testCases = problemAddDTO.getTestCases();
+        if(CollectionUtil.isNotEmpty(testCases)) {
+            List<TestCaseEntity> testCaseEntities = testCases.stream().map(entity -> {
+                TestCaseEntity testCaseEntity = new TestCaseEntity();
+                testCaseEntity.setProblemId(problemId);
+                testCaseEntity.setInput(entity.getInput());
+                testCaseEntity.setOutput(entity.getOutput());
+                return testCaseEntity;
+            }).collect(Collectors.toList());
+
+            testCaseMapper.saveBatch(testCaseEntities);
         }
 
         return true;
@@ -377,10 +392,10 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
 
 
     /**
-     * 获取提交记录
+     * 获取提交记录（内部接口，用于MQ拿到代码和编程语言进行操作）
      */
     @Override
-    public SubmitRecordDTO getSubmitRecord(Long submitId) {
+    public SubmitRecordDTO getInnerSubmitRecord(Long submitId) {
         ProblemSubmitRecordEntity recordEntity = problemSubmitMapper.selectById(submitId);
         if (recordEntity == null) {
             throw new ProblemException(ResultCode.SUBMIT_RECORD_NOT_FOUND);
@@ -389,6 +404,36 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         SubmitRecordDTO submitRecordDTO = new SubmitRecordDTO();
         BeanUtil.copyProperties(recordEntity, submitRecordDTO);
         return submitRecordDTO;
+    }
+
+
+    /**
+     * 获取提交记录（外部接口，用于展示）
+     */
+    @Override
+    public SubmitRecordVO getSubmitRecord(Long submitId) {
+        // 1. 查询数据库记录
+        ProblemSubmitRecordEntity submitRecord = problemSubmitMapper.selectById(submitId);
+        if (submitRecord == null) {
+            throw new ProblemException(ResultCode.SUBMIT_RECORD_NOT_FOUND);
+        }
+
+        // 2. 转换为 VO
+        SubmitRecordVO vo = new SubmitRecordVO();
+        BeanUtil.copyProperties(submitRecord, vo);
+
+        // 3. 安全校验：代码脱敏 (Code De-sensitization)
+        // 只有 "本人" 才能查看源码和详细报错
+        Long currentUserId = UserContext.getUserId(); // 从网关透传的 Header 中获取
+
+        // 如果未登录，或者当前用户不是提交者
+        if (currentUserId == null || !currentUserId.equals(submitRecord.getUserId())) {
+            vo.setCode(null);          // 隐藏代码
+            vo.setErrorMessage(null);  // 隐藏错误栈（防止泄题或暴露系统信息）
+            // 提示：status 和 judgeResult 依然保留，别人可以看到你 "AC" 还是 "WA"，但看不到代码
+        }
+
+        return vo;
     }
 
 

@@ -51,6 +51,6 @@ public class ProblemInnerController implements ProblemInterface {
     @Override
     @Operation(summary = "获取提交代码的信息")
     public Result<SubmitRecordDTO> getSubmitRecord(Long submitId) {
-        return Result.success(problemService.getSubmitRecord(submitId));
+        return Result.success(problemService.getInnerSubmitRecord(submitId));
     }
 }
