@@ -38,6 +38,8 @@ public enum ResultCode {
     UPDATE_PROBLEM_ERROR(6009, "更新题目信息失败"),
     TEST_CASE_NOT_FOUND(6010, "题目缺少测试用例，无法判题"),
     SUBMIT_RECORD_NOT_FOUND(6011, "提交记录不存在"),
+    CONTEST_TIME_ERROR(6012, "比赛时间错误"),
+    CONTEST_NOT_FOUND(6013, "比赛不存在"),
 
     /* ===================== 程序缺陷类（9xxx） ===================== */
     NULL_POINTER(9001, "空指针异常"),

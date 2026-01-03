@@ -1,0 +1,133 @@
+package com.liren.contest.service.impl;
+
+import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.util.StrUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.liren.common.core.enums.ContestStatusEnum;
+import com.liren.common.core.result.ResultCode;
+import com.liren.contest.dto.ContestAddDTO;
+import com.liren.contest.dto.ContestQueryRequest;
+import com.liren.contest.entity.ContestEntity;
+import com.liren.contest.exception.ContestException;
+import com.liren.contest.mapper.ContestMapper;
+import com.liren.contest.service.IContestService;
+import com.liren.contest.vo.ContestVO;
+import org.springframework.stereotype.Service;
+
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity> implements IContestService {
+
+    /**
+     * 新增或修改竞赛信息
+     */
+    @Override
+    public boolean saveOrUpdateContest(ContestAddDTO contestAddDTO) {
+        // 1. 校验时间
+        if(contestAddDTO.getStartTime().isAfter(contestAddDTO.getEndTime())) {
+            throw new ContestException(ResultCode.CONTEST_TIME_ERROR);
+        }
+
+        // 2. 保存或修改竞赛信息
+        ContestEntity contest = new ContestEntity();
+        BeanUtil.copyProperties(contestAddDTO, contest);
+        contest.setStatus(ContestStatusEnum.NOT_STARTED.getCode());
+
+        return this.saveOrUpdate(contest);
+    }
+
+
+    /**
+     * 查询竞赛列表
+     */
+    @Override
+    public Page<ContestVO> listContestVO(ContestQueryRequest queryRequest) {
+        LambdaQueryWrapper<ContestEntity> wrapper = new LambdaQueryWrapper<>();
+
+        // 关键词搜索
+        if(StrUtil.isNotBlank(queryRequest.getKeyword())) {
+            wrapper.like(ContestEntity::getTitle, queryRequest.getKeyword());
+        }
+
+        // 状态搜索
+        // 0-未开始: startTime > now
+        // 1-进行中: startTime <= now && endTime >= now
+        // 2-已结束: endTime < now
+        if(queryRequest.getStatus() != null) {
+            LocalDateTime now = LocalDateTime.now();
+            if(queryRequest.getStatus().equals(ContestStatusEnum.NOT_STARTED.getCode())) {
+                wrapper.gt(ContestEntity::getStartTime, now);
+            } else if(queryRequest.getStatus().equals(ContestStatusEnum.RUNNING.getCode())) {
+                wrapper.le(ContestEntity::getStartTime, now).ge(ContestEntity::getEndTime, now);
+            } else {
+                wrapper.lt(ContestEntity::getEndTime, now);
+            }
+        }
+
+        // 按照时间倒序排序
+        wrapper.orderByDesc(ContestEntity::getStartTime);
+
+        // 分页查询
+        Page<ContestEntity> page = this.page(new Page<>(queryRequest.getCurrent(), queryRequest.getPageSize()), wrapper);
+        Page<ContestVO> contestVOPage = new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
+
+        // 转换成VO对象并设置状态
+        List<ContestVO> contestVOS = page.getRecords().stream()
+                .map(this::convertContestEntity2ContestVO).collect(Collectors.toList());
+
+        contestVOPage.setRecords(contestVOS);
+        return contestVOPage;
+    }
+
+    /**
+     * 根据竞赛ID查询竞赛详情
+     */
+    @Override
+    public ContestVO getContestVO(Long contestId) {
+        ContestEntity contestEntity = this.getById(contestId);
+        if(contestEntity == null) {
+            throw new ContestException(ResultCode.CONTEST_NOT_FOUND);
+        }
+        return this.convertContestEntity2ContestVO(contestEntity);
+    }
+
+    /**
+     * 转换ContestEntity到ContestVO
+     */
+    private ContestVO convertContestEntity2ContestVO(ContestEntity entity) {
+        ContestVO contestVO = new ContestVO();
+        BeanUtil.copyProperties(entity, contestVO);
+
+        LocalDateTime startTime = entity.getStartTime();
+        LocalDateTime endTime = entity.getEndTime();
+        LocalDateTime now = LocalDateTime.now();
+
+        // 动态设置状态
+        // 0-未开始: startTime > now
+        // 1-进行中: startTime <= now && endTime >= now
+        // 2-已结束: endTime < now
+        if (startTime.isAfter(now)) {
+            contestVO.setStatus(ContestStatusEnum.NOT_STARTED.getCode());
+            contestVO.setStatusDesc(ContestStatusEnum.NOT_STARTED.getMessage());
+        } else if (startTime.isBefore(now) && endTime.isAfter(now)) {
+            contestVO.setStatus(ContestStatusEnum.RUNNING.getCode());
+            contestVO.setStatusDesc(ContestStatusEnum.RUNNING.getMessage());
+        } else {
+            contestVO.setStatus(ContestStatusEnum.ENDED.getCode());
+            contestVO.setStatusDesc(ContestStatusEnum.ENDED.getMessage());
+        }
+
+        Duration duration = Duration.between(startTime, endTime);
+        long hours = duration.toHours();
+        long minutes = duration.toMinutes() % 60;
+        contestVO.setDuration(String.format("%d小时%d分", hours, minutes));
+
+        return contestVO;
+    }
+}
