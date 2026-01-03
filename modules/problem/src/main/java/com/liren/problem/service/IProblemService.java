@@ -2,6 +2,7 @@ package com.liren.problem.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.liren.api.problem.dto.ProblemBasicInfoDTO;
 import com.liren.api.problem.dto.ProblemSubmitUpdateDTO;
 import com.liren.api.problem.dto.SubmitRecordDTO;
 import com.liren.api.problem.dto.TestCaseDTO;
@@ -39,4 +40,7 @@ public interface IProblemService extends IService<ProblemEntity> {
 
     // 获取提交记录（外部接口，用于展示）
     SubmitRecordVO getSubmitRecord(Long submitId);
+
+    // 获取题目基本信息 (内部接口，用于比赛服务调用)
+    ProblemBasicInfoDTO getProblemBasicInfo(Long problemId);
 }

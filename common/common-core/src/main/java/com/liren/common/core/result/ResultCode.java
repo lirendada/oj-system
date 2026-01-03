@@ -40,6 +40,7 @@ public enum ResultCode {
     SUBMIT_RECORD_NOT_FOUND(6011, "提交记录不存在"),
     CONTEST_TIME_ERROR(6012, "比赛时间错误"),
     CONTEST_NOT_FOUND(6013, "比赛不存在"),
+    CONTEST_PROBLEM_ALREADY_EXIST(6014, "该题目已添加至本场比赛"),
 
     /* ===================== 程序缺陷类（9xxx） ===================== */
     NULL_POINTER(9001, "空指针异常"),

@@ -5,24 +5,39 @@ import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.liren.api.problem.api.ProblemInterface;
+import com.liren.api.problem.dto.ProblemBasicInfoDTO;
 import com.liren.common.core.enums.ContestStatusEnum;
+import com.liren.common.core.exception.BizException;
+import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
 import com.liren.contest.dto.ContestAddDTO;
+import com.liren.contest.dto.ContestProblemAddDTO;
 import com.liren.contest.dto.ContestQueryRequest;
 import com.liren.contest.entity.ContestEntity;
+import com.liren.contest.entity.ContestProblemEntity;
 import com.liren.contest.exception.ContestException;
 import com.liren.contest.mapper.ContestMapper;
+import com.liren.contest.mapper.ContestProblemMapper;
 import com.liren.contest.service.IContestService;
+import com.liren.contest.vo.ContestProblemVO;
 import com.liren.contest.vo.ContestVO;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
 public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity> implements IContestService {
+    @Autowired
+    private ContestProblemMapper contestProblemMapper;
+
+    @Autowired
+    private ProblemInterface remoteProblemService;
 
     /**
      * 新增或修改竞赛信息
@@ -41,7 +56,6 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
 
         return this.saveOrUpdate(contest);
     }
-
 
     /**
      * 查询竞赛列表
@@ -96,6 +110,84 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         }
         return this.convertContestEntity2ContestVO(contestEntity);
     }
+
+    /**
+     * 添加题目到竞赛
+     */
+    @Override
+    public void addProblemToContest(ContestProblemAddDTO addDTO) {
+        // 1. 校验比赛是否存在
+        ContestEntity contest = this.getById(addDTO.getContestId());
+        if (contest == null) {
+            throw new ContestException(ResultCode.CONTEST_NOT_FOUND);
+        }
+
+        // 2. 校验题目是否存在 (远程调用)
+        Result<ProblemBasicInfoDTO> problemResult = remoteProblemService.getProblemBasicInfo(addDTO.getProblemId());
+        if (problemResult.getData() == null) {
+            throw new ContestException(ResultCode.SUBJECT_NOT_FOUND);
+        }
+
+        // 3. 检验是否重复添加
+        LambdaQueryWrapper<ContestProblemEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ContestProblemEntity::getContestId, addDTO.getContestId())
+               .eq(ContestProblemEntity::getProblemId, addDTO.getProblemId());
+        if(contestProblemMapper.selectCount(wrapper) > 0) {
+            throw new ContestException(ResultCode.CONTEST_PROBLEM_ALREADY_EXIST);
+        }
+
+        // 4. 添加题目到竞赛
+        ContestProblemEntity contestProblemEntity = new ContestProblemEntity();
+        BeanUtil.copyProperties(addDTO, contestProblemEntity);
+        contestProblemMapper.insert(contestProblemEntity);
+    }
+
+    /**
+     * 获取竞赛题目列表
+     */
+    @Override
+    public List<ContestProblemVO> getContestProblemList(Long contestId) {
+        // 1. 查出该比赛所有的题目关联
+        LambdaQueryWrapper<ContestProblemEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ContestProblemEntity::getContestId, contestId);
+        wrapper.orderByAsc(ContestProblemEntity::getDisplayId); // 按 A, B, C 排序
+        List<ContestProblemEntity> entities = contestProblemMapper.selectList(wrapper);
+
+        if (entities.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 2. 转换为 VO 并填充题目详情
+        return entities.stream().map(entity -> {
+            ContestProblemVO vo = new ContestProblemVO();
+            BeanUtil.copyProperties(entity, vo);
+
+            // TODO: 远程调用查标题 (注意：这里是循环调用，性能较差，后期可用 Feign 批量查询接口优化)
+            try {
+                Result<ProblemBasicInfoDTO> result = remoteProblemService.getProblemBasicInfo(entity.getProblemId());
+                if (result.getData() != null) {
+                    vo.setTitle(result.getData().getTitle());
+                    vo.setDifficulty(result.getData().getDifficulty());
+                }
+            } catch (Exception e) {
+                vo.setTitle("题目信息加载失败"); // 降级处理
+                log.error("远程查询题目失败", e);
+            }
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    /**
+     * 删除竞赛题目
+     */
+    @Override
+    public void removeContestProblem(Long contestId, Long problemId) {
+        LambdaQueryWrapper<ContestProblemEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ContestProblemEntity::getContestId, contestId)
+                .eq(ContestProblemEntity::getProblemId, problemId);
+        contestProblemMapper.delete(wrapper);
+    }
+
 
     /**
      * 转换ContestEntity到ContestVO

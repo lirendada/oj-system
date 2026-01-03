@@ -1,6 +1,7 @@
 package com.liren.problem.controller;
 
 import com.liren.api.problem.api.ProblemInterface;
+import com.liren.api.problem.dto.ProblemBasicInfoDTO;
 import com.liren.api.problem.dto.ProblemSubmitUpdateDTO;
 import com.liren.api.problem.dto.SubmitRecordDTO;
 import com.liren.api.problem.dto.TestCaseDTO;
@@ -52,5 +53,11 @@ public class ProblemInnerController implements ProblemInterface {
     @Operation(summary = "获取提交代码的信息")
     public Result<SubmitRecordDTO> getSubmitRecord(Long submitId) {
         return Result.success(problemService.getInnerSubmitRecord(submitId));
+    }
+
+    @Override
+    @Operation(summary = "获取题目基本信息 (用于比赛服务调用)")
+    public Result<ProblemBasicInfoDTO> getProblemBasicInfo(Long problemId) {
+        return Result.success(problemService.getProblemBasicInfo(problemId));
     }
 }

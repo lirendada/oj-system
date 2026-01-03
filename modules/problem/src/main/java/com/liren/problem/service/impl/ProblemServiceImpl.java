@@ -5,6 +5,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.liren.api.problem.dto.ProblemBasicInfoDTO;
 import com.liren.api.problem.dto.ProblemSubmitUpdateDTO;
 import com.liren.api.problem.dto.SubmitRecordDTO;
 import com.liren.api.problem.dto.TestCaseDTO;
@@ -434,6 +435,22 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         }
 
         return vo;
+    }
+
+
+    /**
+     * 获取题目基本信息（contest模块调用）
+     */
+    @Override
+    public ProblemBasicInfoDTO getProblemBasicInfo(Long problemId) {
+        ProblemEntity problem = this.getById(problemId);
+        if (problem == null) {
+            throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
+        }
+
+        ProblemBasicInfoDTO basicInfoDTO = new ProblemBasicInfoDTO();
+        BeanUtil.copyProperties(problem, basicInfoDTO);
+        return basicInfoDTO;
     }
 
 

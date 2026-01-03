@@ -3,14 +3,18 @@ package com.liren.contest.controller;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.liren.common.core.result.Result;
 import com.liren.contest.dto.ContestAddDTO;
+import com.liren.contest.dto.ContestProblemAddDTO;
 import com.liren.contest.dto.ContestQueryRequest;
 import com.liren.contest.service.IContestService;
+import com.liren.contest.vo.ContestProblemVO;
 import com.liren.contest.vo.ContestVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/contest")
@@ -38,4 +42,23 @@ public class ContestController {
         return Result.success(contestService.getContestVO(id));
     }
 
+    @PostMapping("/problem/add")
+    @Operation(summary = "添加题目到比赛")
+    public Result<Void> addProblemToContest(@RequestBody @Valid ContestProblemAddDTO addDTO) {
+        contestService.addProblemToContest(addDTO);
+        return Result.success();
+    }
+
+    @GetMapping("/{contestId}/problems")
+    @Operation(summary = "获取比赛题目列表")
+    public Result<List<ContestProblemVO>> getContestProblemList(@PathVariable("contestId") Long contestId) {
+        return Result.success(contestService.getContestProblemList(contestId));
+    }
+
+    @PostMapping("/problem/remove")
+    @Operation(summary = "移除比赛题目")
+    public Result<Void> removeContestProblem(@RequestParam Long contestId, @RequestParam Long problemId) {
+        contestService.removeContestProblem(contestId, problemId);
+        return Result.success();
+    }
 }
