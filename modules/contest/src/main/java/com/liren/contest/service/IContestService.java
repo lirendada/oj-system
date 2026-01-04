@@ -41,4 +41,14 @@ public interface IContestService extends IService<ContestEntity> {
      * 移除比赛题目
      */
     void removeContestProblem(Long contestId, Long problemId);
+
+    /**
+     * 注册/报名比赛
+     */
+    boolean registerContest(Long contestId, Long userId);
+
+    /**
+     * 校验用户是否有参赛资格 (供远程调用)
+     */
+    boolean validateContestPermission(Long contestId, Long userId);
 }

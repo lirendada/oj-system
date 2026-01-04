@@ -32,7 +32,7 @@ public class UserServiceImpl implements IUserService {
         }
 
         // 2. 判断用户是否状态正常
-        if(user.getStatus().equals(UserStatusEnum.FORBIDDEN.getCode())) {
+        if(UserStatusEnum.FORBIDDEN.getCode().equals(user.getStatus())) {
             throw new UserLoginException(ResultCode.USER_IS_FORBIDDEN);
         }
 

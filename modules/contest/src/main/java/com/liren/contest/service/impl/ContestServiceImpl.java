@@ -16,9 +16,11 @@ import com.liren.contest.dto.ContestProblemAddDTO;
 import com.liren.contest.dto.ContestQueryRequest;
 import com.liren.contest.entity.ContestEntity;
 import com.liren.contest.entity.ContestProblemEntity;
+import com.liren.contest.entity.ContestRegistrationEntity;
 import com.liren.contest.exception.ContestException;
 import com.liren.contest.mapper.ContestMapper;
 import com.liren.contest.mapper.ContestProblemMapper;
+import com.liren.contest.mapper.ContestRegistrationMapper;
 import com.liren.contest.service.IContestService;
 import com.liren.contest.vo.ContestProblemVO;
 import com.liren.contest.vo.ContestVO;
@@ -38,6 +40,9 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
 
     @Autowired
     private ProblemInterface remoteProblemService;
+
+    @Autowired
+    private ContestRegistrationMapper contestRegistrationMapper;
 
     /**
      * 新增或修改竞赛信息
@@ -75,7 +80,7 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         // 2-已结束: endTime < now
         if(queryRequest.getStatus() != null) {
             LocalDateTime now = LocalDateTime.now();
-            if(queryRequest.getStatus().equals(ContestStatusEnum.NOT_STARTED.getCode())) {
+            if(ContestStatusEnum.NOT_STARTED.getCode().equals(queryRequest.getStatus())) {
                 wrapper.gt(ContestEntity::getStartTime, now);
             } else if(queryRequest.getStatus().equals(ContestStatusEnum.RUNNING.getCode())) {
                 wrapper.le(ContestEntity::getStartTime, now).ge(ContestEntity::getEndTime, now);
@@ -186,6 +191,71 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         wrapper.eq(ContestProblemEntity::getContestId, contestId)
                 .eq(ContestProblemEntity::getProblemId, problemId);
         contestProblemMapper.delete(wrapper);
+    }
+
+    /**
+     * 注册/报名比赛
+     */
+    @Override
+    public boolean registerContest(Long contestId, Long userId) {
+        // 1. 校验比赛是否存在
+        ContestEntity contest = this.getById(contestId);
+        if(contest == null) {
+            throw new ContestException(ResultCode.CONTEST_NOT_FOUND);
+        }
+
+        // 2. 校验比赛状态 (依赖时间，而不是依赖数据库的 status 字段)，只要没结束，就可以报名（支持 提前报名 + 赛中报名）
+        LocalDateTime now = LocalDateTime.now();
+        if(contest.getEndTime().isBefore(now)) {
+            throw new ContestException(ResultCode.CONTEST_IS_ENDED);
+        }
+
+        // 3. 校验是否重复报名
+        LambdaQueryWrapper<ContestRegistrationEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ContestRegistrationEntity::getUserId, userId)
+                .eq(ContestRegistrationEntity::getContestId, contestId);
+        ContestRegistrationEntity contestRegistration = contestRegistrationMapper.selectOne(wrapper);
+        if(contestRegistration != null) {
+            throw new ContestException(ResultCode.USER_ALREADY_REGISTERED_CONTEST);
+        }
+
+        // 4. 保存报名信息
+        ContestRegistrationEntity registration = new ContestRegistrationEntity();
+        registration.setContestId(contestId);
+        registration.setUserId(userId);
+        int insert = contestRegistrationMapper.insert(registration);
+        return insert == 1;
+    }
+
+    /**
+     * 校验用户是否有参赛资格 (供远程调用)
+     */
+    @Override
+    public boolean validateContestPermission(Long contestId, Long userId) {
+        // 1. 校验比赛是否存在
+        ContestEntity contest = this.getById(contestId);
+        if(contest == null) {
+            throw new ContestException(ResultCode.CONTEST_NOT_FOUND);
+        }
+
+        // 2. 校验比赛状态 (依赖时间，而不是依赖数据库的 status 字段)
+        LocalDateTime now = LocalDateTime.now();
+        if(contest.getEndTime().isBefore(now)) {
+            throw new ContestException(ResultCode.CONTEST_IS_ENDED);
+        }
+        if(contest.getStartTime().isAfter(now)) {
+            throw new ContestException(ResultCode.CONTEST_NOT_STARTED);
+        }
+
+        // 3. 校验用户是否已报名
+        LambdaQueryWrapper<ContestRegistrationEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ContestRegistrationEntity::getUserId, userId)
+                .eq(ContestRegistrationEntity::getContestId, contestId);
+        ContestRegistrationEntity registration = contestRegistrationMapper.selectOne(wrapper);
+        if(registration == null) {
+            return false;
+        }
+        return true;
     }
 
 

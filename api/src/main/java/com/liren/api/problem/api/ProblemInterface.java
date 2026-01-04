@@ -16,7 +16,7 @@ import java.util.List;
 
 /**
  * contextId: 用于区分同一个服务名的不同 Client (防止Bean冲突)
- * name: 目标服务名 (oj-problem-service)
+ * name: 目标服务名 (problem-service)
  * path: 统一前缀 (建议内部接口加 /inner 区分)
  */
 @FeignClient(contextId = "ProblemInterface",name = "problem-service", path = "/problem/inner")

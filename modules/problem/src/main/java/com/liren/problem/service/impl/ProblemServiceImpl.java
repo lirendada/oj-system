@@ -5,6 +5,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.liren.api.problem.api.ContestInterface;
 import com.liren.api.problem.dto.ProblemBasicInfoDTO;
 import com.liren.api.problem.dto.ProblemSubmitUpdateDTO;
 import com.liren.api.problem.dto.SubmitRecordDTO;
@@ -12,6 +13,7 @@ import com.liren.api.problem.dto.TestCaseDTO;
 import com.liren.common.core.constant.Constants;
 import com.liren.common.core.context.UserContext;
 import com.liren.common.core.enums.ProblemStatusEnum;
+import com.liren.common.core.exception.BizException;
 import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
 import com.liren.problem.dto.ProblemAddDTO;
@@ -52,6 +54,9 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
 
     @Autowired
     private TestCaseMapper testCaseMapper;
+
+    @Autowired
+    private ContestInterface contestService;
 
     /**
      * 新增题目
@@ -284,7 +289,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         // 2. 检查题目状态 (如果是C端用户，不能看 hidden 的题目)
         // 暂时假设所有调这个接口的都是C端，或者是管理员预览。
         // 如果严格一点，可以结合 UserContext 判断：如果是普通用户 且 status=0 -> 抛异常
-        if (problemEntity.getStatus() == ProblemStatusEnum.HIDDEN.getCode()) {
+        if (problemEntity.getStatus().equals(ProblemStatusEnum.HIDDEN.getCode())) {
              throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
             // 这里先留个 TODO，是否允许管理员预览
         }
@@ -325,7 +330,23 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
             throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
         }
 
-        // 2. 保存提交记录
+        // 2. 如果是比赛题目，需要进行权限校验
+        if(submitDTO.getContestId() != null) {
+            Result<Boolean> result = contestService.validateContestPermission(submitDTO.getContestId(), UserContext.getUserId());
+
+            // 逻辑判断需要适配：
+            // 1. 远程调用本身失败 (网络故障等) -> !isSuccess
+            // 2. 远程业务逻辑返回 false (无权限) -> getData() == false
+            if(!result.isSuccess() || result.getData() == null || result.getData() == false) {
+                if(result.getMessage() == null) {
+                    throw new ProblemException(ResultCode.USER_NOT_REGISTERED_CONTEST);
+                } else {
+                    throw new ProblemException(result.getCode(), result.getMessage());
+                }
+            }
+        }
+
+        // 3. 保存提交记录
         ProblemSubmitRecordEntity submitRecord = new ProblemSubmitRecordEntity();
         submitRecord.setProblemId(submitDTO.getProblemId());
         submitRecord.setCode(submitDTO.getCode());
@@ -343,7 +364,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         submitRecord.setJudgeResult(null); // 尚未出结果
         problemSubmitMapper.insert(submitRecord);
 
-        // 3. 发送消息到MQ
+        // 4. 发送消息到MQ
         // 消息内容通常发 ID 即可，消费者再去查库。或者把关键信息都发过去减少查库。
         // 这里我们发 submitId 过去
         rabbitTemplate.convertAndSend(Constants.JUDGE_EXCHANGE, Constants.JUDGE_ROUTING_KEY, submitRecord.getSubmitId());

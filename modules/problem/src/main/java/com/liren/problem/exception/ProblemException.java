@@ -7,4 +7,8 @@ public class ProblemException extends BizException {
     public ProblemException(ResultCode resultCode) {
         super(resultCode);
     }
+
+    public ProblemException(int code, String message) {
+        super(code, message);
+    }
 }

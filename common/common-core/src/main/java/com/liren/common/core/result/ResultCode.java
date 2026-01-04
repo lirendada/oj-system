@@ -41,6 +41,10 @@ public enum ResultCode {
     CONTEST_TIME_ERROR(6012, "比赛时间错误"),
     CONTEST_NOT_FOUND(6013, "比赛不存在"),
     CONTEST_PROBLEM_ALREADY_EXIST(6014, "该题目已添加至本场比赛"),
+    CONTEST_IS_ENDED(6015, "比赛已结束"),
+    USER_ALREADY_REGISTERED_CONTEST(6016, "用户已报名本场比赛"),
+    CONTEST_NOT_STARTED(6017, "比赛尚未开始"),
+    USER_NOT_REGISTERED_CONTEST(6018, "用户未报名本场比赛"),
 
     /* ===================== 程序缺陷类（9xxx） ===================== */
     NULL_POINTER(9001, "空指针异常"),

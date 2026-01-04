@@ -1,10 +1,13 @@
 package com.liren.contest.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.liren.common.core.context.UserContext;
 import com.liren.common.core.result.Result;
+import com.liren.common.core.result.ResultCode;
 import com.liren.contest.dto.ContestAddDTO;
 import com.liren.contest.dto.ContestProblemAddDTO;
 import com.liren.contest.dto.ContestQueryRequest;
+import com.liren.contest.exception.ContestException;
 import com.liren.contest.service.IContestService;
 import com.liren.contest.vo.ContestProblemVO;
 import com.liren.contest.vo.ContestVO;
@@ -60,5 +63,16 @@ public class ContestController {
     public Result<Void> removeContestProblem(@RequestParam Long contestId, @RequestParam Long problemId) {
         contestService.removeContestProblem(contestId, problemId);
         return Result.success();
+    }
+
+    @PostMapping("/register/{contestId}")
+    @Operation(summary = "报名比赛")
+    public Result<Boolean> registerContest(@PathVariable("contestId") Long contestId) {
+        // 从 UserContext 获取当前登录用户 ID
+        Long userId = UserContext.getUserId();
+        if (userId == null) {
+            throw new ContestException(ResultCode.UNAUTHORIZED);
+        }
+        return Result.success(contestService.registerContest(contestId, userId));
     }
 }

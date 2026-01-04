@@ -21,4 +21,8 @@ public class Result<T> {
     public static <T> Result<T> fail(int code, String msg) {
         return new Result<T>(code, msg, null);
     }
+
+    public static boolean isSuccess() {
+        return ResultCode.SUCCESS.getCode() == 1000;
+    }
 }
