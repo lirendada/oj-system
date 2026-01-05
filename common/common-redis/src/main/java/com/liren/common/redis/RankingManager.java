@@ -25,7 +25,7 @@ public class RankingManager {
     /**
      * 用户 AC 一道题（自动处理去重 + 更新所有榜单）
      */
-    public void userAcProblem(Long userId, Long problemId) {
+    public boolean userAcProblem(Long userId, Long problemId) {
         // 1. 【原子操作去重】
         // SADD命令：如果元素已存在返回0，不存在返回1。利用返回值判断是否是第一次AC。
         String userSolvedKey = Constants.USER_SOLVED_KEY_PREFIX + userId;
@@ -33,7 +33,7 @@ public class RankingManager {
 
         // 如果返回值是 0 (或 null)，说明之前已经 AC 过了，直接返回，解决并发问题
         if (addedCount == null || addedCount == 0) {
-            return;
+            return false; // 非首次ac
         }
 
         // 2. 更新各个维度的排行榜
@@ -59,6 +59,8 @@ public class RankingManager {
         // 2.4 月榜 +1 (Key: oj:rank:monthly:202311)
         String monthlyKey = Constants.RANK_MONTHLY_PREFIX + LocalDateTimeUtil.format(now, "yyyyMM");
         redisTemplate.opsForZSet().incrementScore(monthlyKey, userId, Constants.RANK_SUBMIT_ADD_COUNT);
+
+        return true; // 首次ac
     }
 
     /**

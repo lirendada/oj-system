@@ -2,6 +2,9 @@ package com.liren.user.service.impl;
 
 import cn.hutool.core.collection.CollectionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
 import com.liren.user.entity.UserEntity;
 import com.liren.common.core.enums.UserStatusEnum;
@@ -12,6 +15,7 @@ import com.liren.user.dto.UserLoginDTO;
 import com.liren.user.exception.UserLoginException;
 import com.liren.user.mapper.UserMapper;
 import com.liren.user.service.IUserService;
+import com.liren.user.vo.UserLoginVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -22,14 +26,14 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
-public class UserServiceImpl implements IUserService {
+public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> implements IUserService {
     @Autowired
     private UserMapper userMapper;
 
 
     //TODO：redis优化
     @Override
-    public String login(UserLoginDTO userLoginDTO) {
+    public UserLoginVO login(UserLoginDTO userLoginDTO) {
         // 1. 判断用户是否存在
         LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<>();
         UserEntity user = userMapper.selectOne(
@@ -49,11 +53,19 @@ public class UserServiceImpl implements IUserService {
             throw new UserLoginException(ResultCode.USER_PASSWORD_ERROR);
         }
 
-        // 4. 生成token进行返回
-        // 【修改】添加 "user" 角色
+        // 4. 生成 Token (带上 user 角色)
         Map<String, Object> claims = new HashMap<>();
-        claims.put("userRole", "user"); // 标记为普通用户
-        return JwtUtil.createToken(user.getUserId(), claims);
+        claims.put("userRole", "user");
+        String token = JwtUtil.createToken(user.getUserId(), claims);
+
+        // 5. 【修改点】组装 VO 返回
+        UserLoginVO loginVO = new UserLoginVO();
+        loginVO.setToken(token);
+        loginVO.setUserId(user.getUserId());
+        loginVO.setNickName(user.getNickName());
+        loginVO.setAvatar(user.getAvatar());
+
+        return loginVO;
     }
 
 
@@ -79,5 +91,25 @@ public class UserServiceImpl implements IUserService {
             return userBasicInfoDTO;
         }).collect(Collectors.toList());
         return infoDTOS;
+    }
+
+
+    /**
+     * 更新用户的提交统计信息
+     */
+    @Override
+    public boolean updateUserStats(Long userId, boolean isAc) {
+        LambdaUpdateWrapper<UserEntity> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(UserEntity::getUserId, userId);
+
+        // 提交数 +1 (使用 IFNULL 防止字段默认为 null 导致计算失败)
+        wrapper.setSql("submitted_count = IFNULL(submitted_count, 0) + 1");
+
+        // 如果 AC 了，通过数也 +1
+        if (isAc) {
+            wrapper.setSql("accepted_count = IFNULL(accepted_count, 0) + 1");
+        }
+
+        return this.update(wrapper);
     }
 }

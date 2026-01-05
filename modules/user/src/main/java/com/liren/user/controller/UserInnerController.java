@@ -7,7 +7,9 @@ import com.liren.user.service.IUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -21,7 +23,13 @@ public class UserInnerController implements UserInterface {
 
     @Override
     @Operation(summary = "批量获取用户基本信息")
-    public Result<List<UserBasicInfoDTO>> getBatchUserBasicInfo(List<Long> userIds) {
+    public Result<List<UserBasicInfoDTO>> getBatchUserBasicInfo(@RequestParam("userIds") List<Long> userIds) {
         return Result.success(userService.getBatchUserBasicInfo(userIds));
+    }
+
+    @Override
+    @Operation(summary = "更新用户做题统计")
+    public Result<Boolean> updateUserStats(@RequestParam("userId") Long userId, @RequestParam("isAc") Boolean isAc) {
+        return Result.success(userService.updateUserStats(userId, isAc));
     }
 }

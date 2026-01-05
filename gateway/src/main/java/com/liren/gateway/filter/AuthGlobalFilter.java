@@ -42,6 +42,7 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
+        log.info("AuthGlobalFilter: Request path={}", path);
 
         // 1. 获取 Token
         String token = request.getHeaders().getFirst("Authorization");

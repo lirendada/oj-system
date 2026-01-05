@@ -3,9 +3,11 @@ package com.liren.problem.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollectionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.liren.api.problem.api.contest.ContestInterface;
+import com.liren.api.problem.api.user.UserInterface;
 import com.liren.api.problem.dto.problem.ProblemBasicInfoDTO;
 import com.liren.api.problem.dto.problem.ProblemSubmitUpdateDTO;
 import com.liren.api.problem.dto.problem.SubmitRecordDTO;
@@ -61,6 +63,8 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
 
     @Autowired
     private RankingManager rankingManager;
+    @Autowired
+    private UserInterface userInterface;
 
     /**
      * 新增题目
@@ -383,6 +387,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
      */
     @Override
     public Boolean updateSubmitResult(ProblemSubmitUpdateDTO updateDTO) {
+        // 1. 准备更新数据
         ProblemSubmitRecordEntity entity = new ProblemSubmitRecordEntity();
         entity.setSubmitId(updateDTO.getSubmitId());
 
@@ -392,22 +397,62 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         if (updateDTO.getMemoryCost() != null) entity.setMemoryCost(updateDTO.getMemoryCost());
         if (updateDTO.getErrorMessage() != null) entity.setErrorMessage(updateDTO.getErrorMessage());
 
-        // 1. 执行数据库更新
+        // 2. 执行数据库更新 (Update DB)
+        // 只有这里更新成功了，才继续往下走，防止消息重复消费导致的重复计数
         boolean updateSuccess = problemSubmitMapper.updateById(entity) > 0;
 
-        // 2. 【新增排行榜逻辑】更新成功 && 结果是 AC (Accepted)
-        if (updateSuccess && JudgeResultEnum.ACCEPTED.getCode().equals(updateDTO.getJudgeResult())) {
+        if (updateSuccess) {
             try {
-                // 需要查询完整的提交记录，获取 userId 和 problemId (updateDTO 里没有这些信息)
+                // 3. 查询提交记录详情 (为了拿到 userId, problemId, contestId)
                 ProblemSubmitRecordEntity submitRecord = problemSubmitMapper.selectById(updateDTO.getSubmitId());
 
                 if (submitRecord != null) {
-                    // 调用 Redis 管理器更新排行榜 (自动去重 + 更新日/周/总榜)
-                    rankingManager.userAcProblem(submitRecord.getUserId(), submitRecord.getProblemId());
+                    boolean isAc = JudgeResultEnum.ACCEPTED.getCode().equals(updateDTO.getJudgeResult());
+
+                    // ================================================================
+                    // 核心逻辑：去重判断 (Deduplication)
+                    // isFirstAc: 该用户是否是第一次解决这道题？
+                    // ================================================================
+                    boolean isFirstAc = false;
+
+                    // 4. 更新 Redis 排行榜 (如果 AC)
+                    if (isAc) {
+                        // userAcProblem 返回 true 表示是“首次AC”，返回 false 表示“重复AC”
+                        isFirstAc = rankingManager.userAcProblem(submitRecord.getUserId(), submitRecord.getProblemId());
+                    }
+
+                    // ================================================================
+                    // 5. 更新用户统计 (tb_user)
+                    // ================================================================
+                    // 逻辑策略：
+                    // - 提交数(submitted_count): 只要判题结束就 +1 (User服务内部实现)
+                    // - 通过数(accepted_count) : 只有 (AC 且 首次AC) 时才 +1
+                    //
+                    // 即使是 "重复AC"，我们传 false 给 User 服务，User 服务会执行: submitted+1, accepted不变。符合预期。
+                    boolean increaseAccepted = isAc && isFirstAc;
+                    userInterface.updateUserStats(submitRecord.getUserId(), increaseAccepted);
+
+
+                    // ================================================================
+                    // 6. 更新题目统计 (tb_problem)
+                    // ================================================================
+                    // 逻辑策略：
+                    // - 提交数: 总是 +1
+                    // - 通过数: 只要 AC 就 +1 (通常题目维度的统计是按“人次”算的，不需要去重)
+                    LambdaUpdateWrapper<ProblemEntity> problemUpdateWrapper = new LambdaUpdateWrapper<>();
+                    problemUpdateWrapper.eq(ProblemEntity::getProblemId, submitRecord.getProblemId());
+
+                    String sql = "submit_num = IFNULL(submit_num, 0) + 1";
+                    if (isAc) {
+                        sql += ", accepted_num = IFNULL(accepted_num, 0) + 1";
+                    }
+                    problemUpdateWrapper.setSql(sql);
+
+                    this.update(problemUpdateWrapper);
                 }
             } catch (Exception e) {
-                // 捕获异常，防止因为 Redis 问题导致整个判题流程报错（排行榜丢一两个数据问题不大，判题结果不能丢）
-                log.error("更新排行榜失败: submitId={}", updateDTO.getSubmitId(), e);
+                // 捕获异常，防止因为统计更新失败导致判题任务回滚 (判题结果才是最重要的)
+                log.error("更新统计信息失败: submitId={}", updateDTO.getSubmitId(), e);
             }
         }
 

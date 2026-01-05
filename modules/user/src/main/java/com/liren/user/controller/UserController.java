@@ -3,6 +3,7 @@ package com.liren.user.controller;
 import com.liren.common.core.result.Result;
 import com.liren.user.dto.UserLoginDTO;
 import com.liren.user.service.IUserService;
+import com.liren.user.vo.UserLoginVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -24,7 +25,7 @@ public class UserController {
     @PostMapping("/login")
     @Operation(
             summary = "用户登录",
-            description = "返回 JWT Token",
+            description = "返回 Token 及用户基本信息",
             requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     required = true,
                     description = "登录信息",
@@ -33,7 +34,8 @@ public class UserController {
                             schema = @Schema(implementation = UserLoginDTO.class)
                     )
     ))
-    public Result<String> login(@Valid @RequestBody UserLoginDTO loginDTO) {
+    public Result<UserLoginVO> login(@Valid @RequestBody UserLoginDTO loginDTO) {
+        // 这里直接返回 Service 的结果即可
         return Result.success(userService.login(loginDTO));
     }
 }
