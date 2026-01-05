@@ -30,6 +30,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     @Autowired
     private UserMapper userMapper;
 
+    @Autowired
+    private JwtUtil jwtUtil;
 
     //TODO：redis优化
     @Override
@@ -56,7 +58,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         // 4. 生成 Token (带上 user 角色)
         Map<String, Object> claims = new HashMap<>();
         claims.put("userRole", "user");
-        String token = JwtUtil.createToken(user.getUserId(), claims);
+        String token = jwtUtil.createToken(user.getUserId(), claims);
 
         // 5. 【修改点】组装 VO 返回
         UserLoginVO loginVO = new UserLoginVO();

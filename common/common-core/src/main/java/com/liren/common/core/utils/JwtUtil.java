@@ -1,6 +1,6 @@
 package com.liren.common.core.utils;
 
-import com.liren.common.core.constant.Constants;
+import com.liren.common.core.config.JwtProperties;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -15,30 +15,39 @@ import java.util.Map;
 
 @Slf4j
 public class JwtUtil {
-    private static final Key key = Keys.hmacShaKeyFor(Constants.JWT_SECRET.getBytes());
+
+    private Key key;
+    private Long expiration;
+
+    /**
+     * 初始化密钥和过期时间
+     */
+    public JwtUtil(JwtProperties jwtProperties) {
+        String secret = jwtProperties.getSecret();
+        if (!StringUtils.hasText(secret)) {
+            throw new IllegalStateException("JWT 密钥未配置，请在 Nacos 中配置 jwt.secret");
+        }
+        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+        this.expiration = jwtProperties.getExpiration();
+        if (this.expiration == null) {
+            this.expiration = 86400000L; // 默认 24 小时
+        }
+        log.info("JWT 配置初始化完成，过期时间: {} ms", this.expiration);
+    }
+
 
     /**
      * 生成 Token
-     * @param userId 用户ID
-     * @return Token 字符串
      */
-    public static String createToken(Long userId) {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", userId); // 统一 Key 为 "userId"
-
-        return Jwts.builder()
-                .setClaims(claims)
-                .setSubject(String.valueOf(userId)) // 同时设置 Subject，方便标准解析
-                .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + Constants.TOKEN_EXPIRATION_TIME))
-                .signWith(key, SignatureAlgorithm.HS256)
-                .compact();
+    public String createToken(Long userId) {
+        // 需要改为实例方法
+        return createToken(userId, null);
     }
 
     /**
      * 生成带额外信息的 Token (例如昵称、角色等)
      */
-    public static String createToken(Long userId, Map<String, Object> claims) {
+    public String createToken(Long userId, Map<String, Object> claims) {
         if (claims == null) {
             claims = new HashMap<>();
         }
@@ -48,7 +57,7 @@ public class JwtUtil {
                 .setClaims(claims)
                 .setSubject(String.valueOf(userId))
                 .setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + Constants.TOKEN_EXPIRATION_TIME))
+                .setExpiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
@@ -56,7 +65,7 @@ public class JwtUtil {
     /**
      * 解析 Token 获取 Claims
      */
-    public static Claims parseToken(String token) {
+    public Claims parseToken(String token) {
         if (!StringUtils.hasText(token)) {
             return null;
         }
@@ -76,7 +85,7 @@ public class JwtUtil {
      * 解析 Token 获取用户ID (核心方法)
      * 返回 Long 类型，防止雪花算法 ID 精度丢失
      */
-    public static Long getUserId(String token) {
+    public Long getUserId(String token) {
         Claims claims = parseToken(token);
         if (claims == null) {
             return null;
@@ -97,7 +106,7 @@ public class JwtUtil {
     /**
      * 【新增】解析 Token 获取用户角色
      */
-    public static String getUserRole(String token) {
+    public String getUserRole(String token) {
         Claims claims = parseToken(token);
         if (claims == null) {
             return null;
@@ -109,7 +118,7 @@ public class JwtUtil {
     /**
      * 校验 Token 是否有效
      */
-    public static boolean validateToken(String token) {
+    public boolean validateToken(String token) {
         return getUserId(token) != null;
     }
 }

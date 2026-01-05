@@ -31,6 +31,8 @@ import java.util.List;
 @Component
 @Slf4j
 public class AuthGlobalFilter implements GlobalFilter, Ordered {
+    @Autowired
+    private JwtUtil jwtUtil;
 
     private final AntPathMatcher antPathMatcher = new AntPathMatcher();
 
@@ -59,8 +61,8 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
 
         if (StringUtils.hasText(token)) {
             // 如果带了 Token，就尝试解析
-            userId = JwtUtil.getUserId(token);
-            userRole = JwtUtil.getUserRole(token);
+            userId = jwtUtil.getUserId(token);
+            userRole = jwtUtil.getUserRole(token);
         }
 
         // 3. 鉴权逻辑

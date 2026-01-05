@@ -20,3 +20,5 @@ spring:
         shared-configs:
           - data-id: common.yaml
             refresh: true
+          - data-id: jwt.yaml
+            refresh: true

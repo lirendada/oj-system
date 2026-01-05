@@ -1,1 +1,2 @@
 com.liren.common.core.config.MybatisPlusConfig
+com.liren.common.core.config.JwtAutoConfiguration
