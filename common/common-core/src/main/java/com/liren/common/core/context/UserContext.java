@@ -11,6 +11,9 @@ public class UserContext {
     // 核心：使用 TransmittableThreadLocal 而不是普通的 ThreadLocal
     private static final ThreadLocal<Long> USER_ID = new TransmittableThreadLocal<>();
 
+    // 用户角色 (例如 "admin", "user")
+    private static final ThreadLocal<String> USER_ROLE = new TransmittableThreadLocal<>();
+
     /**
      * 设置当前登录用户ID
      */
@@ -25,11 +28,21 @@ public class UserContext {
         return USER_ID.get();
     }
 
+    // 【新增】设置角色
+    public static void setUserRole(String role) {
+        USER_ROLE.set(role);
+    }
+
+    // 【新增】获取角色
+    public static String getUserRole() {
+        return USER_ROLE.get();
+    }
+
     /**
      * 清除上下文
-     * 【非常重要】在请求结束时(拦截器的 afterCompletion)必须调用，防止内存泄漏
      */
     public static void remove() {
         USER_ID.remove();
+        USER_ROLE.remove(); // 【新增】务必一起清除，防止内存泄漏
     }
 }

@@ -95,6 +95,18 @@ public class JwtUtil {
     }
 
     /**
+     * 【新增】解析 Token 获取用户角色
+     */
+    public static String getUserRole(String token) {
+        Claims claims = parseToken(token);
+        if (claims == null) {
+            return null;
+        }
+        Object roleObj = claims.get("userRole");
+        return roleObj != null ? roleObj.toString() : null;
+    }
+
+    /**
      * 校验 Token 是否有效
      */
     public static boolean validateToken(String token) {

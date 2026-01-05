@@ -42,43 +42,49 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
-        log.info("AuthGlobalFilter: path={}", path);
 
-        // 1. 白名单校验：如果是白名单接口，直接放行
-        if (isWhitelist(path)) {
-            log.info("AuthGlobalFilter: path is in whitelist, pass");
-            return chain.filter(exchange);
-        }
-
-        // 2. 获取 Token
-        // 约定：前端把 Token 放在 Header 的 "Authorization" 字段，或者 "token" 字段
+        // 1. 获取 Token
         String token = request.getHeaders().getFirst("Authorization");
         if (!StringUtils.hasText(token)) {
-            // 尝试从 token 字段取
             token = request.getHeaders().getFirst("token");
         }
+        if (StringUtils.hasText(token) && token.startsWith("Bearer ")) {
+            token = token.substring(7);
+        }
 
-        // 3. 校验 Token
+        // 2. 尝试解析 Token
         Long userId = null;
+        String userRole = null;
+
         if (StringUtils.hasText(token)) {
-            // 这里的 JwtUtils 就是我们之前在 common-core 里写的
-            // 注意：如果 token 带了 "Bearer " 前缀，需要去掉
-            if (token.startsWith("Bearer ")) {
-                token = token.substring(7);
-            }
+            // 如果带了 Token，就尝试解析
             userId = JwtUtil.getUserId(token);
+            userRole = JwtUtil.getUserRole(token);
         }
 
-        // 4. Token 无效或解析失败，拦截请求
+        // 3. 鉴权逻辑
         if (userId == null) {
-            return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
+            // 情况 A：没带 Token，或者 Token 无效
+            if (isWhitelist(path)) {
+                // 如果是白名单接口，允许游客访问 -> 直接放行 (不透传 Header)
+                return chain.filter(exchange);
+            } else {
+                // 如果不是白名单，必须登录 -> 拦截报错
+                return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
+            }
         }
 
-        // 5. Token 有效，透传 UserId 到下游微服务
-        // 关键步骤：把 userId 放入 Header，这样下游的 System/User 服务就能知道是谁在请求了
-        ServerHttpRequest mutableReq = request.mutate()
-                .header("userId", String.valueOf(userId))
-                .build();
+        // 4. Token 有效 -> 透传身份信息
+        // 走到这里说明 userId 一定有值，不管是不是白名单，都把身份传下去
+        ServerHttpRequest.Builder builder = request.mutate()
+                .header("userId", String.valueOf(userId));
+
+        if (StringUtils.hasText(userRole)) {
+            builder.header("userRole", userRole);
+        }
+
+        log.info("AuthGlobalFilter: Pass with userId={}, role={}", userId, userRole);
+        ServerHttpRequest mutableReq = builder.build();
 
         return chain.filter(exchange.mutate().request(mutableReq).build());
     }

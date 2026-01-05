@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.liren.user.mapper.UserMapper">
-    <select id="getBatchUser" resultType="com.liren.common.core.entity.UserEntity">
+    <select id="getBatchUser" resultType="com.liren.user.entity.UserEntity">
         select user_id, nick_name, avatar from tb_user
         where user_id in
         <foreach collection="userIds" item="id" separator="," open="(" close=")">

@@ -1,6 +1,8 @@
 package com.liren.problem;
 
+import com.liren.problem.entity.ProblemTagRelationEntity;
 import com.liren.problem.entity.TestCaseEntity;
+import com.liren.problem.mapper.ProblemTagRelationMapper;
 import com.liren.problem.mapper.TestCaseMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +16,9 @@ public class testBatchInsert {
     @Autowired
     private TestCaseMapper testCaseMapper;
 
+    @Autowired
+    private ProblemTagRelationMapper problemTagRelationMapper;
+
     @Test
     public void testBatchInsert() {
         List<TestCaseEntity> testCaseEntities = new ArrayList<>();
@@ -25,5 +30,17 @@ public class testBatchInsert {
             testCaseEntities.add(testCaseEntity);
         }
         testCaseMapper.saveBatch(testCaseEntities);
+    }
+
+    @Test
+    public void testBatchInsertProblemTagRelation() {
+        List<ProblemTagRelationEntity> problemTagRelations = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            ProblemTagRelationEntity problemTagRelation = new ProblemTagRelationEntity();
+            problemTagRelation.setProblemId(i + 1L);
+            problemTagRelation.setTagId(1L);
+            problemTagRelations.add(problemTagRelation);
+        }
+        problemTagRelationMapper.saveBatch(problemTagRelations);
     }
 }

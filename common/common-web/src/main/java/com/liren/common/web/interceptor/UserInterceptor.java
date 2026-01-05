@@ -24,7 +24,13 @@ public class UserInterceptor implements HandlerInterceptor {
             }
         }
 
-        // 放行（没有 userId 也放行，因为有些接口可能是公开的，或者由 @CheckLogin 注解控制权限）
+        // 3. 从 Header 中获取 userRole
+        String userRole = request.getHeader("userRole");
+        if (StringUtils.hasText(userRole)) {
+            UserContext.setUserRole(userRole);
+        }
+
+        // 放行
         return true;
     }
 

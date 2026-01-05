@@ -109,9 +109,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
             }).collect(Collectors.toList());
 
             // 保存标签关系
-            for(ProblemTagRelationEntity relation : relationList) {
-                problemTagRelationMapper.insert(relation);
-            }
+            problemTagRelationMapper.saveBatch(relationList);
         }
 
         // 4. 保存测试样例
@@ -291,11 +289,14 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         }
 
         // 2. 检查题目状态 (如果是C端用户，不能看 hidden 的题目)
-        // 暂时假设所有调这个接口的都是C端，或者是管理员预览。
-        // 如果严格一点，可以结合 UserContext 判断：如果是普通用户 且 status=0 -> 抛异常
         if (problemEntity.getStatus().equals(ProblemStatusEnum.HIDDEN.getCode())) {
-             throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
-            // 这里先留个 TODO，是否允许管理员预览
+            // 【核心逻辑】获取当前用户角色
+            String role = UserContext.getUserRole();
+
+            // 只有管理员 ("admin") 才能预览，普通用户或未登录用户抛出异常
+            if (!"admin".equals(role)) {
+                throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
+            }
         }
 
         // 3. 转换 Bean (Entity -> DetailVO)

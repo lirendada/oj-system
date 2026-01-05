@@ -3,9 +3,8 @@ package com.liren.user.service.impl;
 import cn.hutool.core.collection.CollectionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
-import com.liren.common.core.entity.UserEntity;
+import com.liren.user.entity.UserEntity;
 import com.liren.common.core.enums.UserStatusEnum;
-import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
 import com.liren.common.core.utils.BCryptUtil;
 import com.liren.common.core.utils.JwtUtil;
@@ -17,7 +16,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -49,7 +50,10 @@ public class UserServiceImpl implements IUserService {
         }
 
         // 4. 生成token进行返回
-        return JwtUtil.createToken(user.getUserId());
+        // 【修改】添加 "user" 角色
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userRole", "user"); // 标记为普通用户
+        return JwtUtil.createToken(user.getUserId(), claims);
     }
 
 

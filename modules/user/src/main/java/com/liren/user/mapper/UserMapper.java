@@ -1,7 +1,7 @@
 package com.liren.user.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.liren.common.core.entity.UserEntity;
+import com.liren.user.entity.UserEntity;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
