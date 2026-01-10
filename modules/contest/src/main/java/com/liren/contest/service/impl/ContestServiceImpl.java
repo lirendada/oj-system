@@ -227,7 +227,7 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
     }
 
     /**
-     * 校验用户是否有参赛资格 (供远程调用)
+     * 校验用户是否有参赛资格 (供提交代码远程调用)
      */
     @Override
     public boolean validateContestPermission(Long contestId, Long userId) {
@@ -254,7 +254,7 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
     }
 
     /**
-     * 判断用户是否有访问比赛的权限 (供远程调用)
+     * 判断用户是否有访问比赛的权限 (供查看题目详情远程调用)
      */
     @Override
     public boolean hasAccess(Long contestId, Long userId) {

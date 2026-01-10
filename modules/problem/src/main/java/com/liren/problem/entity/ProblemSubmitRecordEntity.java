@@ -27,4 +27,5 @@ public class ProblemSubmitRecordEntity extends BaseTimeEntity {
     private Integer memoryCost;  // 最大内存（KB）
     private String errorMessage; // 错误信息
     private String case_result;  // 每个测试点的详细结果（JSON格式）
+    private Integer score;       // 判题得分
 }

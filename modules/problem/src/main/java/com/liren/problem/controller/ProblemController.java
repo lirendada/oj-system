@@ -2,6 +2,7 @@ package com.liren.problem.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.liren.api.problem.api.user.UserInterface;
+import com.liren.api.problem.dto.problem.ProblemSubmitUpdateDTO;
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
 import com.liren.common.core.result.Result;
 import com.liren.problem.dto.ProblemAddDTO;
@@ -210,5 +211,18 @@ public class ProblemController {
             resultList.add(vo);
         }
         return resultList;
+    }
+
+    /**
+     * 【临时测试接口】模拟判题机回调
+     * 作用：手动发送判题结果，触发分数计算和榜单更新
+     * 注意：测试完成后请删除，或者加上 @Profile("dev") 注解防止生产环境暴露
+     */
+    @PostMapping("/test/update-result")
+    @Operation(summary = "【测试用】模拟判题回调")
+    public Result<Boolean> testUpdateResult(@RequestBody ProblemSubmitUpdateDTO updateDTO) {
+        // 直接调用 Service 里的核心逻辑
+        Boolean success = problemService.updateSubmitResult(updateDTO);
+        return Result.success(success);
     }
 }

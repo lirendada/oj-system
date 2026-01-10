@@ -297,7 +297,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         String userRole = UserContext.getUserRole();
         boolean isAdmin = "admin".equals(userRole);
 
-        // 2. 检查是否为竞赛题目
+        // 2. 检查是否为竞赛题目，是的话需要有权限查看
         try {
             Result<Long> contestResult = contestService.getContestIdByProblemId(problemId);
 
@@ -306,7 +306,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
 
                 // 如果 contestId > 0，说明是比赛题
                 if (contestId != null && contestId > 0) {
-                    // 如果不是管理员，必须校验权限
+                    // 如果不是管理员，必须校验权限才能查看题目
                     if (!isAdmin) {
                         Result<Boolean> accessResult = contestService.hasAccess(contestId, userId);
 
@@ -323,7 +323,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
             throw new ProblemException(ResultCode.SYSTEM_ERROR);
         }
 
-        // 3. 检查题目状态 (如果是C端用户，不能看 hidden 的题目)
+        // 3. 检查题目是否为隐藏状态 (如果是C端用户，不能看 hidden 的题目)
         if (ProblemStatusEnum.HIDDEN.getCode().equals(problemEntity.getStatus())) {
             // 只有管理员 ("admin") 才能预览，普通用户或未登录用户抛出异常
             if (!isAdmin) {
@@ -453,58 +453,74 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
      */
     @Override
     public Boolean updateSubmitResult(ProblemSubmitUpdateDTO updateDTO) {
-        // 1. 准备更新数据
+        // ================================================================
+        // 1. 先计算分数 (Pre-calculate Score)
+        //    必须在 entity 初始化之前算出分数，才能存入数据库
+        // ================================================================
+        int score = 0;
+        int fullscore = Constants.CONTEST_QUESTION_SCORE;
+        int passCount = updateDTO.getPassCaseCount() == null ? 0 : updateDTO.getPassCaseCount();
+        int totalCount = updateDTO.getTotalCaseCount() == null ? 0 : updateDTO.getTotalCaseCount();
+        // 逻辑 A: 如果直接 AC，满分
+        if (JudgeResultEnum.ACCEPTED.getCode().equals(updateDTO.getJudgeResult())) {
+            score = fullscore;
+        }
+        // 逻辑 B: 如果没 AC，但有部分通过，按比例给分
+        else if (totalCount > 0 && passCount > 0) {
+            double ratio = (double) passCount / totalCount;
+            score = (int) (ratio * fullscore);
+        }
+
+        // ================================================================
+        // 2. 准备更新数据
+        // ================================================================
         ProblemSubmitRecordEntity entity = new ProblemSubmitRecordEntity();
         entity.setSubmitId(updateDTO.getSubmitId());
-
+        entity.setScore(score);
         if (updateDTO.getStatus() != null) entity.setStatus(updateDTO.getStatus());
         if (updateDTO.getJudgeResult() != null) entity.setJudgeResult(updateDTO.getJudgeResult());
         if (updateDTO.getTimeCost() != null) entity.setTimeCost(updateDTO.getTimeCost());
         if (updateDTO.getMemoryCost() != null) entity.setMemoryCost(updateDTO.getMemoryCost());
         if (updateDTO.getErrorMessage() != null) entity.setErrorMessage(updateDTO.getErrorMessage());
 
-        // 2. 执行数据库更新 (Update DB)
-        // 只有这里更新成功了，才继续往下走，防止消息重复消费导致的重复计数
+        // ================================================================
+        // 3. 执行数据库更新
+        // ================================================================
+        // 只有这里更新成功了，才继续往下更新其他信息，防止消息重复消费导致的重复计数
         boolean updateSuccess = problemSubmitMapper.updateById(entity) > 0;
 
+        // ================================================================
+        // 4. 后置处理 (Redis 排行榜 & User 统计)
+        // ================================================================
         if (updateSuccess) {
             try {
-                // 3. 查询提交记录详情 (为了拿到 userId, problemId, contestId)
+                // 查询提交记录详情 (为了拿到 userId, problemId, contestId)
                 ProblemSubmitRecordEntity submitRecord = problemSubmitMapper.selectById(updateDTO.getSubmitId());
 
                 if (submitRecord != null) {
                     boolean isAc = JudgeResultEnum.ACCEPTED.getCode().equals(updateDTO.getJudgeResult());
 
-                    // ================================================================
-                    // 核心逻辑：去重判断 (Deduplication)
-                    // isFirstAc: 该用户是否是第一次解决这道题？
-                    // ================================================================
-                    boolean isFirstAc = false;
-
-                    // 4. 更新 Redis 排行榜 (如果 AC)
+                    // --- 4.1 普通排行榜 (只看 AC) ---
+                    boolean isFirstAc = false; // 该用户是否是第一次解决这道题？
                     if (isAc) {
                         // userAcProblem 返回 true 表示是“首次AC”，返回 false 表示“重复AC”
                         isFirstAc = rankingManager.userAcProblem(submitRecord.getUserId(), submitRecord.getProblemId());
                     }
 
-                    // ================================================================
-                    // 5. 更新用户统计 (tb_user)
-                    // ================================================================
-                    // 逻辑策略：
-                    // - 提交数(submitted_count): 只要判题结束就 +1 (User服务内部实现)
-                    // - 通过数(accepted_count) : 只有 (AC 且 首次AC) 时才 +1
-                    //
-                    // 即使是 "重复AC"，我们传 false 给 User 服务，User 服务会执行: submitted+1, accepted不变。符合预期。
-                    boolean increaseAccepted = isAc && isFirstAc;
-                    userInterface.updateUserStats(submitRecord.getUserId(), increaseAccepted);
+                    // --- 4.2 比赛排行榜 (看分数) ---
+                    if (submitRecord.getContestId() != null && submitRecord.getContestId() > 0) {
+                        rankingManager.updateContestScoreRank(
+                                submitRecord.getContestId(),
+                                submitRecord.getUserId(),
+                                submitRecord.getProblemId(),
+                                score // 传入上面算好的分数
+                        );
+                    }
 
+                    // --- 4.3 更新统计信息 ---
+                    userInterface.updateUserStats(submitRecord.getUserId(), isAc && isFirstAc);
 
-                    // ================================================================
-                    // 6. 更新题目统计 (tb_problem)
-                    // ================================================================
-                    // 逻辑策略：
-                    // - 提交数: 总是 +1
-                    // - 通过数: 只要 AC 就 +1 (通常题目维度的统计是按“人次”算的，不需要去重)
+                    // 更新题目表
                     LambdaUpdateWrapper<ProblemEntity> problemUpdateWrapper = new LambdaUpdateWrapper<>();
                     problemUpdateWrapper.eq(ProblemEntity::getProblemId, submitRecord.getProblemId());
 

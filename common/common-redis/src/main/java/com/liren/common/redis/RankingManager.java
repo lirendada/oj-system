@@ -64,6 +64,43 @@ public class RankingManager {
     }
 
     /**
+     * 更新比赛排行榜 (按分数模式)
+     * @param contestId 比赛ID
+     * @param userId 用户ID
+     * @param problemId 题目ID
+     * @param currentScore 本次提交的得分 (例如 12 分)
+     */
+    public void updateContestScoreRank(Long contestId, Long userId, Long problemId, Integer currentScore) {
+        if (contestId == null || contestId <= 0 || currentScore == null) return;
+
+        // 1. 获取用户在这道题的历史最高分
+        // Key: oj:contest:score_detail:{contestId}:{userId}
+        String userScoreKey = Constants.CONTEST_USER_SCORE_DETAIL_PREFIX + contestId + ":" + userId;
+
+        // 从 Redis Hash 中获取该题目的旧分数
+        Object oldScoreObj = redisTemplate.opsForHash().get(userScoreKey, problemId.toString());
+        Integer oldScore = oldScoreObj == null ? 0 : Integer.parseInt(oldScoreObj.toString());
+
+        // 2. 只有当“本次得分” > “历史最高分”时，才更新
+        if (currentScore > oldScore) {
+            // A. 更新这道题的最高分
+            redisTemplate.opsForHash().put(userScoreKey, problemId.toString(), currentScore.toString());
+
+            // B. 计算分数差值 (本次涨了多少分)
+            int delta = currentScore - oldScore;
+
+            // C. 更新总排行榜 (ZSet)
+            // 用户的总分 = 旧总分 + 差值
+            String rankKey = Constants.RANK_CONTEST_PREFIX + contestId;
+            redisTemplate.opsForZSet().incrementScore(rankKey, userId, delta);
+
+            // 设置过期时间
+            redisTemplate.expire(userScoreKey, Constants.CONTEST_USER_SCORE_DETAIL_EXPIRE_TIME, TimeUnit.DAYS);
+            redisTemplate.expire(rankKey, Constants.CONTEST_RANK_EXPIRE_TIME, TimeUnit.DAYS);
+        }
+    }
+
+    /**
      * 获取总榜前 N 名
      */
     public Set<Object> getTotalRankTopN(int limit) {

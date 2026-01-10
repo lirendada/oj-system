@@ -28,4 +28,7 @@ public class ProblemSubmitUpdateDTO {
      * 如果是 CE/RE，这里存详细报错
      */
     private String errorMessage;
+
+    private Integer passCaseCount;  // 通过用例数
+    private Integer totalCaseCount; // 总用例数
 }

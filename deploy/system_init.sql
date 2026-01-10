@@ -259,3 +259,5 @@ INSERT INTO `tb_problem_tag_relation` (`problem_id`, `tag_id`) VALUES
 INSERT INTO `tb_test_case` (`case_id`, `problem_id`, `input`, `output`) VALUES
 (1, 1001, '2 7 11 15\n9', '0 1'),
 (2, 1001, '3 2 4\n6', '1 2');
+
+ALTER TABLE tb_submit_record ADD COLUMN score INT DEFAULT 0 COMMENT '得分';
