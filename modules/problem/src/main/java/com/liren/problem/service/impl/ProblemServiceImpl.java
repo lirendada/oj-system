@@ -286,34 +286,62 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
      */
     @Override
     public ProblemDetailVO getProblemDetail(Long problemId) {
-        // 1. 先查出problemEntity
+        // 1. 先查出题目
         ProblemEntity problemEntity = this.getById(problemId);
         if(problemEntity == null) {
             throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
         }
 
-        // 2. 检查题目状态 (如果是C端用户，不能看 hidden 的题目)
-        if (problemEntity.getStatus().equals(ProblemStatusEnum.HIDDEN.getCode())) {
-            // 【核心逻辑】获取当前用户角色
-            String role = UserContext.getUserRole();
+        // 先获取用户信息
+        Long userId = UserContext.getUserId();
+        String userRole = UserContext.getUserRole();
+        boolean isAdmin = "admin".equals(userRole);
 
+        // 2. 检查是否为竞赛题目
+        try {
+            Result<Long> contestResult = contestService.getContestIdByProblemId(problemId);
+
+            if (Result.isSuccess(contestResult)) {
+                Long contestId = contestResult.getData();
+
+                // 如果 contestId > 0，说明是比赛题
+                if (contestId != null && contestId > 0) {
+                    // 如果不是管理员，必须校验权限
+                    if (!isAdmin) {
+                        Result<Boolean> accessResult = contestService.hasAccess(contestId, userId);
+
+                        // 校验不通过（无权限、未报名等）
+                        if (Result.isSuccess(accessResult) || !Boolean.TRUE.equals(accessResult.getData())) {
+                            throw new ProblemException(ResultCode.NOT_ACCESS_TO_CONTEST);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 远程调用失败时的兜底策略：这里安全优先，采用报错，防止泄题
+            log.error("校验题目比赛权限失败: problemId={}", problemId, e);
+            throw new ProblemException(ResultCode.SYSTEM_ERROR);
+        }
+
+        // 3. 检查题目状态 (如果是C端用户，不能看 hidden 的题目)
+        if (ProblemStatusEnum.HIDDEN.getCode().equals(problemEntity.getStatus())) {
             // 只有管理员 ("admin") 才能预览，普通用户或未登录用户抛出异常
-            if (!"admin".equals(role)) {
+            if (!isAdmin) {
                 throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
             }
         }
 
-        // 3. 转换 Bean (Entity -> DetailVO)
+        // 4. 转换 Bean (Entity -> DetailVO)
         ProblemDetailVO detailVO = new ProblemDetailVO();
         BeanUtil.copyProperties(problemEntity, detailVO);
 
-        // 4. 填充标签 (单个题目，查一次关联表即可)
-        // 4.1 查关联关系
+        // 5. 填充标签 (单个题目，查一次关联表即可)
+        // 5.1 查关联关系
         LambdaQueryWrapper<ProblemTagRelationEntity> relationWrapper = new LambdaQueryWrapper<>();
         relationWrapper.eq(ProblemTagRelationEntity::getProblemId, problemId);
         List<ProblemTagRelationEntity> relations = problemTagRelationMapper.selectList(relationWrapper);
 
-        // 4.2 如果有标签，查详情
+        // 5.2 如果有标签，查详情
         if(CollectionUtil.isNotEmpty(relations)) {
             List<Long> tagIds = relations.stream().map(ProblemTagRelationEntity::getTagId).collect(Collectors.toList());
 
@@ -339,18 +367,54 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
             throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
         }
 
-        // 2. 如果是比赛题目，需要进行权限校验
-        if(submitDTO.getContestId() != null) {
+        // =========================================================
+        // 2. 比赛权限与反作弊校验
+        // =========================================================
+
+        // 2.1 先查一下这道题到底属于哪个比赛 (远程调用)
+        Long realContestId = null;
+        Result<Long> contestIdRes = contestService.getContestIdByProblemId(submitDTO.getProblemId());
+        if (Result.isSuccess(contestIdRes)) {
+            realContestId = contestIdRes.getData();
+        }
+
+        // 2.2 用户声称是比赛提交 (DTO 带了 contestID)
+        if (submitDTO.getContestId() != null) {
+            // 校验 A: 防止“张冠李戴”，用户传的 ID 必须和题目真实的比赛 ID 一致
+            if (realContestId == null || !submitDTO.getContestId().equals(realContestId)) {
+                // 题目不属于该比赛，或者题目根本没关联比赛
+                throw new ProblemException(ResultCode.FORBIDDEN_OPERATION);
+            }
+
+            // 校验 B: 校验报名资格和比赛状态 (调用 validatePermission)
             Result<Boolean> result = contestService.validateContestPermission(submitDTO.getContestId(), UserContext.getUserId());
 
-            // 逻辑判断需要适配：
-            // 1. 远程调用本身失败 (网络故障等) -> !isSuccess
-            // 2. 远程业务逻辑返回 false (无权限) -> getData() == false
-            if(!result.isSuccess() || result.getData() == null || result.getData() == false) {
-                if(result.getMessage() == null) {
-                    throw new ProblemException(ResultCode.USER_NOT_REGISTERED_CONTEST);
-                } else {
-                    throw new ProblemException(result.getCode(), result.getMessage());
+            // 处理远程调用的结果
+            if (!Result.isSuccess(result)) {
+                // 远程服务抛异常了 (比如比赛未开始、未报名)
+                throw new ProblemException(result.getCode(), result.getMessage());
+            }
+            // 防御性编程：万一远程返回了 success 可是 data 是 false
+            if (result.getData() != null && !result.getData()) {
+                throw new ProblemException(ResultCode.USER_NOT_REGISTERED_CONTEST);
+            }
+        }
+
+        // 2.3 用户声称是普通提交 (DTO 没带 contestID)
+        else {
+            // 校验 C: 【反偷渡逻辑】
+            // 如果这道题确实属于某个比赛，且该比赛 “正在进行中”，则严禁当作普通题目提交！
+            if (realContestId != null) {
+                // 1. 排除管理员 (管理员需要调试题目，不受限制)
+                if(!"admin".equals(UserContext.getUserRole())) {
+                    // 2. 调用远程服务，查询比赛是否进行中
+                    Result<Boolean> contestOngoing = contestService.isContestOngoing(realContestId);
+                    if(Result.isSuccess(contestOngoing) && Boolean.TRUE.equals(contestOngoing.getData())) {
+                        // ❌ 拦截：比赛进行中，严禁从普通入口提交！
+                        // 哪怕你报名了，也必须去比赛页面提交（为了统计罚时）
+                        // 哪怕你没报名，比赛中也不让你做这道题（为了公平）
+                        throw new ProblemException(ResultCode.SUBMIT_LOGIC_ERROR);
+                    }
                 }
             }
         }
@@ -360,24 +424,26 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         submitRecord.setProblemId(submitDTO.getProblemId());
         submitRecord.setCode(submitDTO.getCode());
         submitRecord.setLanguage(submitDTO.getLanguage());
+
+        // 确保数据库 contest_id 字段默认值处理 (0L 表示平时训练)
         submitRecord.setContestId(submitDTO.getContestId() == null ? 0L : submitDTO.getContestId());
 
         // 从 UserContext 获取当前登录用户
         Long userId = UserContext.getUserId();
         if(userId == null) {
-            throw new ProblemException(ResultCode.UNAUTHORIZED); // 实际上网关会拦截，这里是兜底
+            throw new ProblemException(ResultCode.UNAUTHORIZED);
         }
         submitRecord.setUserId(userId);
 
-        submitRecord.setStatus(10); // 10-Wait
+        submitRecord.setStatus(10); // 10-Wait (等待判题)
         submitRecord.setJudgeResult(null); // 尚未出结果
+
         problemSubmitMapper.insert(submitRecord);
 
         // 4. 发送消息到MQ
-        // 消息内容通常发 ID 即可，消费者再去查库。或者把关键信息都发过去减少查库。
-        // 这里我们发 submitId 过去
         rabbitTemplate.convertAndSend(Constants.JUDGE_EXCHANGE, Constants.JUDGE_ROUTING_KEY, submitRecord.getSubmitId());
         log.info("Send submitId={} to MQ", submitRecord.getSubmitId());
+
         return submitRecord.getSubmitId();
     }
 

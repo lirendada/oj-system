@@ -177,7 +177,7 @@ public class ProblemController {
         Map<Long, UserBasicInfoDTO> userMap = null;
         try {
             Result<List<UserBasicInfoDTO>> userResult = userService.getBatchUserBasicInfo(userIdList);
-            if (userResult.isSuccess() && userResult.getData() != null) {
+            if (userResult.isSuccess(userResult) && userResult.getData() != null) {
                 // 转成 Map<UserId, UserDto> 方便后续快速查找
                 userMap = userResult.getData().stream()
                         .collect(Collectors.toMap(UserBasicInfoDTO::getId, Function.identity(), (k1, k2) -> k1));

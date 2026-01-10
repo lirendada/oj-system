@@ -51,4 +51,19 @@ public interface IContestService extends IService<ContestEntity> {
      * 校验用户是否有参赛资格 (供远程调用)
      */
     boolean validateContestPermission(Long contestId, Long userId);
+
+    /**
+     * 判断用户是否有访问比赛的权限 (供远程调用)
+     */
+    boolean hasAccess(Long contestId, Long userId);
+
+    /**
+     * 根据题目ID获取比赛ID
+     */
+    Long getContestIdByProblemId(Long problemId);
+
+    /**
+     * 根据contestId判断比赛是否正在进行
+     */
+    Boolean isContestOngoing(Long contestId);
 }

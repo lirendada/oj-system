@@ -45,6 +45,9 @@ public enum ResultCode {
     USER_ALREADY_REGISTERED_CONTEST(6016, "用户已报名本场比赛"),
     CONTEST_NOT_STARTED(6017, "比赛尚未开始"),
     USER_NOT_REGISTERED_CONTEST(6018, "用户未报名本场比赛"),
+    NOT_ACCESS_TO_CONTEST(6019, "无权访问该比赛/题目"),
+    FORBIDDEN_OPERATION(6020, "该题目不属于指定的比赛"),
+    SUBMIT_LOGIC_ERROR(6021, "该题目正在进行比赛，请前往比赛页面提交，或等待比赛结束。"),
 
     /* ===================== 程序缺陷类（9xxx） ===================== */
     NULL_POINTER(9001, "空指针异常"),

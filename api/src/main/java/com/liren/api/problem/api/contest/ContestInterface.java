@@ -16,6 +16,25 @@ public interface ContestInterface {
      * 校验提交权限
      */
     @GetMapping("/validate-permission")
-    Result<Boolean> validateContestPermission(@RequestParam("contestId") Long contestId, @RequestParam("userId") Long userId);
+    Result<Boolean> validateContestPermission(@RequestParam("contestId") Long contestId,
+                                              @RequestParam("userId") Long userId);
 
+    /**
+     * 校验是否可以查看题目详情
+     */
+    @GetMapping("/hasAccess")
+    Result<Boolean> hasAccess(@RequestParam("contestId") Long contestId,
+                              @RequestParam("userId") Long userId);
+
+    /**
+     * 根据problemId获取竞赛id
+     */
+    @GetMapping("/getContestIdByProblemId")
+    Result<Long> getContestIdByProblemId(@RequestParam("problemId") Long problemId);
+
+    /**
+     * 根据contestId判断比赛是否正在进行
+     */
+    @GetMapping("/isContestOngoing")
+    Result<Boolean> isContestOngoing(@RequestParam("contestId") Long contestId);
 }

@@ -247,6 +247,79 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         }
 
         // 3. 校验用户是否已报名
+        if(!isUserRegistered(contestId, userId)) {
+            throw new ContestException(ResultCode.USER_NOT_REGISTERED_CONTEST);
+        }
+        return true;
+    }
+
+    /**
+     * 判断用户是否有访问比赛的权限 (供远程调用)
+     */
+    @Override
+    public boolean hasAccess(Long contestId, Long userId) {
+        // 1. 校验比赛是否存在
+        ContestEntity contest = this.getById(contestId);
+        if(contest == null) {
+            throw new ContestException(ResultCode.CONTEST_NOT_FOUND);
+        }
+
+        // 2. 检查比赛状态
+        // 2.1 比赛结束 -> 允许查看
+        LocalDateTime now = LocalDateTime.now();
+        if (contest.getEndTime().isBefore(now)) {
+            return true;
+        }
+
+        // 2.2 比赛未开始 -> 禁止查看
+        if (contest.getStartTime().isAfter(now)) {
+            return false;
+        }
+
+        // 2.3 正在进行中 -> 报名才能查看
+        return isUserRegistered(contestId, userId);
+    }
+
+    /**
+     * 根据题目ID获取所在的竞赛ID (供远程调用)
+     */
+    @Override
+    public Long getContestIdByProblemId(Long problemId) {
+        LambdaQueryWrapper<ContestProblemEntity> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ContestProblemEntity::getProblemId, problemId);
+        ContestProblemEntity entity = contestProblemMapper.selectOne(wrapper);
+        if(entity == null) {
+            return null;
+        }
+        return entity.getContestId();
+    }
+
+    /**
+     * 根据contestId判断比赛是否正在进行
+     */
+    @Override
+    public Boolean isContestOngoing(Long contestId) {
+        ContestEntity contest = this.getById(contestId);
+        if(contest == null) {
+            return false;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        if(contest.getStartTime().isBefore(now) && contest.getEndTime().isAfter(now)) {
+            return true;
+        }
+        return false;
+    }
+
+
+    /**
+     * 判断用户是否已报名
+     */
+    private boolean isUserRegistered(Long contestId, Long userId) {
+        // TODO：建议加个缓存，不要每次都查库
+        if (userId == null) {
+            return false;
+        }
         LambdaQueryWrapper<ContestRegistrationEntity> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ContestRegistrationEntity::getUserId, userId)
                 .eq(ContestRegistrationEntity::getContestId, contestId);
@@ -256,7 +329,6 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         }
         return true;
     }
-
 
     /**
      * 转换ContestEntity到ContestVO

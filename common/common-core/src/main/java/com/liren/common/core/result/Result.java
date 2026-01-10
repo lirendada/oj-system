@@ -22,7 +22,7 @@ public class Result<T> {
         return new Result<T>(code, msg, null);
     }
 
-    public static boolean isSuccess() {
-        return ResultCode.SUCCESS.getCode() == 1000;
+    public static boolean isSuccess(Result<?> result) {
+        return result != null && ResultCode.SUCCESS.getCode() == result.getCode();
     }
 }
