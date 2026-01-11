@@ -197,7 +197,7 @@ public class ProblemController {
             vo.setUserId(userId);
 
             // 获取分数
-            vo.setAcCount(rankingManager.getUserTotalScore(userId));
+            vo.setAcceptedCount(rankingManager.getUserTotalScore(userId));
 
             // 填充用户信息
             if (userMap != null && userMap.containsKey(userId)) {
