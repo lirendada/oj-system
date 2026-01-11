@@ -45,4 +45,10 @@ public class SubmitRecordVO extends BaseTimeEntity {
 
     @Schema(description = "错误信息 (非本人查看时需脱敏)")
     private String errorMessage;
+
+    @Schema(description = "通过用例数")
+    private Integer passCaseCount;
+
+    @Schema(description = "总用例数")
+    private Integer totalCaseCount;
 }

@@ -24,6 +24,10 @@ public class DefaultJudgeStrategy implements JudgeStrategy {
         updateDTO.setSubmitId(submitId);
         updateDTO.setStatus(SubmitStatusEnum.SUCCEED.getCode()); // 只要沙箱跑完了，对于提交记录的生命周期来说就是“完成”了
 
+        // ✅ 1. 初始化用例数量 (默认通过0个，总数为用例列表长度)
+        updateDTO.setPassCaseCount(0);
+        updateDTO.setTotalCaseCount(testCases.size());
+
         // 将沙箱的 status 转换为枚举，来判断判题结果
         SandboxRunStatusEnum runStatus = SandboxRunStatusEnum.getByCode(executeResponse.getStatus());
 
@@ -87,23 +91,33 @@ public class DefaultJudgeStrategy implements JudgeStrategy {
             return;
         }
 
-        // 逐个比对
+        int passCount = 0;
+        boolean hasError = false;
+
+        // ✅ 2. 遍历所有结果，统计通过数量，而不是遇到错误就 return
         for (int i = 0; i < testCases.size(); i++) {
-            // 注意：通常 OJ 需要去除行末空格和换行符来比较
-            // Hutool 的 StrUtil.trim() 或 String.trim() 都可以
             String userOut = userOutputs.get(i) == null ? "" : userOutputs.get(i).trim();
             String stdOut = testCases.get(i).getOutput() == null ? "" : testCases.get(i).getOutput().trim();
 
-            if (!userOut.equals(stdOut)) {
-                // 只要有一个对不上，就是 WA
-                updateDTO.setJudgeResult(JudgeResultEnum.WRONG_ANSWER.getCode());
-                // 可以在 errorMessage 里记录具体的 diff 信息，方便前端展示
-                // updateDTO.setErrorMessage("Case " + (i+1) + " failed.");
-                return;
+            if (userOut.equals(stdOut)) {
+                passCount++;
+            } else {
+                hasError = true;
+                // 如果是第一次发现错误，标记状态为 WA
+                if (updateDTO.getJudgeResult() == null) {
+                    updateDTO.setJudgeResult(JudgeResultEnum.WRONG_ANSWER.getCode());
+                    // 可选：记录第一个错误的详情，如 "Case 1 failed"
+                    // updateDTO.setErrorMessage("Case " + (i + 1) + " Answer Wrong");
+                }
             }
         }
 
-        // 全部通过 -> AC
-        updateDTO.setJudgeResult(JudgeResultEnum.ACCEPTED.getCode());
+        // ✅ 3. 设置通过的用例数
+        updateDTO.setPassCaseCount(passCount);
+
+        // 如果全程没有错误，才算是 AC
+        if (!hasError) {
+            updateDTO.setJudgeResult(JudgeResultEnum.ACCEPTED.getCode());
+        }
     }
 }

@@ -482,6 +482,8 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         if (updateDTO.getTimeCost() != null) entity.setTimeCost(updateDTO.getTimeCost());
         if (updateDTO.getMemoryCost() != null) entity.setMemoryCost(updateDTO.getMemoryCost());
         if (updateDTO.getErrorMessage() != null) entity.setErrorMessage(updateDTO.getErrorMessage());
+        entity.setPassCaseCount(passCount);
+        entity.setTotalCaseCount(totalCount);
 
         // ================================================================
         // 3. 执行数据库更新

@@ -114,8 +114,9 @@ public class ProblemController {
                     )
             )
     )
-    public Result<Long> submitProblem(@RequestBody @Valid ProblemSubmitDTO problemSubmitDTO) {
-        return Result.success(problemService.submitProblem(problemSubmitDTO));
+    public Result<String> submitProblem(@RequestBody @Valid ProblemSubmitDTO problemSubmitDTO) {
+        Long submitId = problemService.submitProblem(problemSubmitDTO);
+        return Result.success(String.valueOf(submitId));
     }
 
 
