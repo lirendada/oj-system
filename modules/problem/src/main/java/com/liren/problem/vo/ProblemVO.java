@@ -14,8 +14,6 @@ import java.util.List;
 @Data
 @Schema(description = "题目VO")
 public class ProblemVO implements Serializable {
-    // 必须转 String，防止前端精度丢失
-    @JsonSerialize(using = ToStringSerializer.class)
     @Schema(description = "题目ID")
     private Long problemId;
 

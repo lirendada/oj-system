@@ -72,4 +72,9 @@ public interface IContestService extends IService<ContestEntity> {
      * 获取比赛排名
      */
     List<ContestRankVO> getContestRank(Long contestId);
+
+    /**
+     * 判断比赛是否已结束
+     */
+    Boolean isContestEnded(Long contestId);
 }

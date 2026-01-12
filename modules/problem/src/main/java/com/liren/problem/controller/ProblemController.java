@@ -81,8 +81,8 @@ public class ProblemController {
     public Result<Page<ProblemVO>> getProblemList(@RequestBody ProblemQueryRequest queryRequest) {
         // 1. 限制爬虫/恶意请求
         long size = queryRequest.getPageSize();
-        if (size > 20) {
-            queryRequest.setPageSize(20);
+        if (size > 50) {
+            queryRequest.setPageSize(50);
         }
 
         // 2. 调用 Service

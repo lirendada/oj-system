@@ -211,15 +211,25 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         String sortField = queryRequest.getSortField();
         String sortOrder = queryRequest.getSortOrder();
         if (StringUtils.hasText(sortField)) {
-            // 这里的 equals 要根据你具体的业务需求，比如前端传 "createTime"
             boolean isAsc = "ascend".equals(sortOrder);
+
             if ("createTime".equals(sortField)) {
                 wrapper.orderBy(true, isAsc, ProblemEntity::getCreateTime);
-            } else if ("submitNum".equals(sortField)) {
+            } else if ("submitNum".equals(sortField)) { // 热度/提交数
                 wrapper.orderBy(true, isAsc, ProblemEntity::getSubmitNum);
+            } else if ("difficulty".equals(sortField)) { // ✅ 难度排序
+                wrapper.orderBy(true, isAsc, ProblemEntity::getDifficulty);
+            } else if ("rate".equals(sortField)) { // ✅ 通过率排序 (计算字段)
+                // 使用 last 拼接 SQL 注入排序 (注意：last 只能调用一次，且会拼接到 SQL 最后)
+                // 逻辑：accepted_num / submit_num。避免除以0 使用 NULLIF
+                String sql = String.format("ORDER BY IFNULL(accepted_num / NULLIF(submit_num, 0), 0) %s", isAsc ? "ASC" : "DESC");
+                wrapper.last(sql);
+            } else {
+                // 未知字段默认排序
+                wrapper.orderByDesc(ProblemEntity::getCreateTime);
             }
         } else {
-            // 默认排序：按创建时间倒序
+            // 默认排序
             wrapper.orderByDesc(ProblemEntity::getCreateTime);
         }
 
@@ -292,56 +302,49 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
             throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
         }
 
-        // 先获取用户信息
-        Long userId = UserContext.getUserId();
-        String userRole = UserContext.getUserRole();
-        boolean isAdmin = "admin".equals(userRole);
+        // 2. 权限校验
+        // 逻辑修正：
+        // 如果题目状态是 NORMAL (公开)，则允许直接访问，无需校验竞赛时间。
+        // 如果题目状态是 HIDDEN (隐藏/竞赛专用)，则必须校验管理员权限或竞赛权限。
+        boolean isHidden = ProblemStatusEnum.HIDDEN.getCode().equals(problemEntity.getStatus());
+        if (isHidden) {
+            Long userId = UserContext.getUserId();
+            String userRole = UserContext.getUserRole();
+            boolean isAdmin = "admin".equals(userRole);
 
-        // 2. 检查是否为竞赛题目，是的话需要有权限查看
-        try {
-            Result<Long> contestResult = contestService.getContestIdByProblemId(problemId);
+            // 如果不是管理员，需要进一步校验是否拥有竞赛权限
+            if (!isAdmin) {
+                boolean hasContestAccess = false;
 
-            if (Result.isSuccess(contestResult)) {
-                Long contestId = contestResult.getData();
-
-                // 如果 contestId > 0，说明是比赛题
-                if (contestId != null && contestId > 0) {
-                    // 如果不是管理员，必须校验权限才能查看题目
-                    if (!isAdmin) {
-                        Result<Boolean> accessResult = contestService.hasAccess(contestId, userId);
-
-                        // 校验不通过（无权限、未报名等）
-                        if (Result.isSuccess(accessResult) || !Boolean.TRUE.equals(accessResult.getData())) {
-                            throw new ProblemException(ResultCode.NOT_ACCESS_TO_CONTEST);
-                        }
+                // 远程调用查询关联的竞赛ID
+                Result<Long> contestResult = contestService.getContestIdByProblemId(problemId);
+                if (Result.isSuccess(contestResult) && contestResult.getData() != null && contestResult.getData() > 0) {
+                    Long contestId = contestResult.getData();
+                    // 校验是否已报名且比赛正在进行/已结束
+                    Result<Boolean> accessResult = contestService.hasAccess(contestId, userId);
+                    if (Result.isSuccess(accessResult) && Boolean.TRUE.equals(accessResult.getData())) {
+                        hasContestAccess = true;
                     }
                 }
-            }
-        } catch (Exception e) {
-            // 远程调用失败时的兜底策略：这里安全优先，采用报错，防止泄题
-            log.error("校验题目比赛权限失败: problemId={}", problemId, e);
-            throw new ProblemException(ResultCode.SYSTEM_ERROR);
-        }
 
-        // 3. 检查题目是否为隐藏状态 (如果是C端用户，不能看 hidden 的题目)
-        if (ProblemStatusEnum.HIDDEN.getCode().equals(problemEntity.getStatus())) {
-            // 只有管理员 ("admin") 才能预览，普通用户或未登录用户抛出异常
-            if (!isAdmin) {
-                throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
+                // 既不是管理员，又没有竞赛权限，则拒绝访问
+                if (!hasContestAccess) {
+                    throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
+                }
             }
         }
 
-        // 4. 转换 Bean (Entity -> DetailVO)
+        // 3. 转换 Bean (Entity -> DetailVO)
         ProblemDetailVO detailVO = new ProblemDetailVO();
         BeanUtil.copyProperties(problemEntity, detailVO);
 
-        // 5. 填充标签 (单个题目，查一次关联表即可)
-        // 5.1 查关联关系
+        // 4. 填充标签 (单个题目，查一次关联表即可)
+        // 4.1 查关联关系
         LambdaQueryWrapper<ProblemTagRelationEntity> relationWrapper = new LambdaQueryWrapper<>();
         relationWrapper.eq(ProblemTagRelationEntity::getProblemId, problemId);
         List<ProblemTagRelationEntity> relations = problemTagRelationMapper.selectList(relationWrapper);
 
-        // 5.2 如果有标签，查详情
+        // 4.2 如果有标签，查详情
         if(CollectionUtil.isNotEmpty(relations)) {
             List<Long> tagIds = relations.stream().map(ProblemTagRelationEntity::getTagId).collect(Collectors.toList());
 
@@ -387,16 +390,21 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
             }
 
             // 校验 B: 校验报名资格和比赛状态 (调用 validatePermission)
-            Result<Boolean> result = contestService.validateContestPermission(submitDTO.getContestId(), UserContext.getUserId());
+            Result<Boolean> endedRes = contestService.isContestEnded(submitDTO.getContestId());
+            boolean isEnded = Result.isSuccess(endedRes) && Boolean.TRUE.equals(endedRes.getData());
 
-            // 处理远程调用的结果
-            if (!Result.isSuccess(result)) {
-                // 远程服务抛异常了 (比如比赛未开始、未报名)
-                throw new ProblemException(result.getCode(), result.getMessage());
-            }
-            // 防御性编程：万一远程返回了 success 可是 data 是 false
-            if (result.getData() != null && !result.getData()) {
-                throw new ProblemException(ResultCode.USER_NOT_REGISTERED_CONTEST);
+            if (isEnded) {
+                // 比赛已结束：降级为普通提交，不走严格的 validatePermission (防止抛出 CONTEST_IS_ENDED 异常)
+                submitDTO.setContestId(null);
+            } else {
+                // 比赛未结束：正常校验报名状态、时间等
+                Result<Boolean> result = contestService.validateContestPermission(submitDTO.getContestId(), UserContext.getUserId());
+                if (!Result.isSuccess(result)) {
+                    throw new ProblemException(result.getCode(), result.getMessage());
+                }
+                if (result.getData() != null && !result.getData()) {
+                    throw new ProblemException(ResultCode.USER_NOT_REGISTERED_CONTEST);
+                }
             }
         }
 

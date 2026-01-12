@@ -11,6 +11,7 @@ import com.liren.api.problem.api.user.UserInterface;
 import com.liren.api.problem.dto.problem.ProblemBasicInfoDTO;
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
 import com.liren.common.core.constant.Constants;
+import com.liren.common.core.context.UserContext;
 import com.liren.common.core.enums.ContestStatusEnum;
 import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
@@ -29,6 +30,7 @@ import com.liren.contest.service.IContestService;
 import com.liren.contest.vo.ContestProblemVO;
 import com.liren.contest.vo.ContestRankVO;
 import com.liren.contest.vo.ContestVO;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
@@ -40,6 +42,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity> implements IContestService {
     @Autowired
@@ -129,6 +132,36 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         // 5. 转换 VO
         List<ContestVO> contestVOS = page.getRecords().stream()
                 .map(this::convertContestEntity2ContestVO).collect(Collectors.toList());
+
+        // ✅ 新增逻辑：填充 registered 字段
+        // 获取当前登录用户 ID (从 ThreadLocal/Header 中获取)
+        Long userId = UserContext.getUserId();
+
+        if (userId != null && !contestVOS.isEmpty()) {
+            // 1. 提取当前页所有比赛 ID
+            List<Long> contestIds = contestVOS.stream().map(ContestVO::getContestId).collect(Collectors.toList());
+
+            // 2. 批量查询该用户在这些比赛中的报名记录
+            LambdaQueryWrapper<ContestRegistrationEntity> regWrapper = new LambdaQueryWrapper<>();
+            regWrapper.eq(ContestRegistrationEntity::getUserId, userId)
+                    .in(ContestRegistrationEntity::getContestId, contestIds);
+            List<ContestRegistrationEntity> registrations = contestRegistrationMapper.selectList(regWrapper);
+
+            // 3. 转为 Set 方便快速查找
+            Set<Long> registeredContestIds = registrations.stream()
+                    .map(ContestRegistrationEntity::getContestId)
+                    .collect(Collectors.toSet());
+
+            // 4. 赋值
+            for (ContestVO vo : contestVOS) {
+                vo.setRegistered(registeredContestIds.contains(vo.getContestId()));
+            }
+        } else {
+            // 未登录或列表为空，全部设为 false
+            for (ContestVO vo : contestVOS) {
+                vo.setRegistered(false);
+            }
+        }
 
         contestVOPage.setRecords(contestVOS);
         return contestVOPage;
@@ -299,11 +332,13 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         // 2.1 比赛结束 -> 允许查看
         LocalDateTime now = LocalDateTime.now();
         if (contest.getEndTime().isBefore(now)) {
+            log.info("比赛结束了，允许查看");
             return true;
         }
 
         // 2.2 比赛未开始 -> 禁止查看
         if (contest.getStartTime().isAfter(now)) {
+            log.info("比赛未开始，禁止查看题目");
             return false;
         }
 
@@ -418,6 +453,18 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         }
 
         return resultList;
+    }
+
+    /**
+     * 判断比赛是否已结束
+     */
+    @Override
+    public Boolean isContestEnded(Long contestId) {
+        ContestEntity contest = this.getById(contestId);
+        if(contest == null) {
+            return false; // 或者抛异常，视业务而定，这里返回 false 比较安全
+        }
+        return contest.getEndTime().isBefore(LocalDateTime.now());
     }
 
 

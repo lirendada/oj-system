@@ -37,4 +37,10 @@ public interface ContestInterface {
      */
     @GetMapping("/isContestOngoing")
     Result<Boolean> isContestOngoing(@RequestParam("contestId") Long contestId);
+
+    /**
+     * 根据contestId判断比赛是否已经结束
+     */
+    @GetMapping("/isContestEnded")
+    Result<Boolean> isContestEnded(@RequestParam("contestId") Long contestId);
 }

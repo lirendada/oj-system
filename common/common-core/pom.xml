@@ -18,6 +18,11 @@
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-json</artifactId>
+        </dependency>
+
         <!--jwt依赖-->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>

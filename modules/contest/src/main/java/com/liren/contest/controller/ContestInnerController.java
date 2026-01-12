@@ -42,4 +42,10 @@ public class ContestInnerController implements ContestInterface {
     public Result<Boolean> isContestOngoing(@RequestParam("contestId") Long contestId) {
         return Result.success(contestService.isContestOngoing(contestId));
     }
+
+    @Override
+    @Operation(summary = "根据contestId判断比赛是否已经结束")
+    public Result<Boolean> isContestEnded(@RequestParam("contestId") Long contestId) {
+        return Result.success(contestService.isContestEnded(contestId));
+    }
 }
