@@ -22,6 +22,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -165,18 +166,19 @@ public class ProblemController {
     }
 
     // 封装通用转换逻辑
-    private List<RankItemVO> getRankList(Set<Object> topUserIds) {
-        if (topUserIds == null || topUserIds.isEmpty()) {
+    private List<RankItemVO> getRankList(Set<ZSetOperations.TypedTuple<Object>> topUserTuples) {
+        if (topUserTuples == null || topUserTuples.isEmpty()) {
             return new ArrayList<>();
         }
 
         // 1. 提取所有用户 ID
         List<Long> userIdList = new ArrayList<>();
-        for (Object idObj : topUserIds) {
-            userIdList.add(Long.valueOf(idObj.toString()));
+        for (ZSetOperations.TypedTuple<Object> tuple : topUserTuples) {
+            // tuple.getValue() 获取的是 UserId
+            userIdList.add(Long.valueOf(tuple.getValue().toString()));
         }
 
-        // 2. 【核心】远程批量查询用户信息
+        // 2. 远程批量查询用户信息
         Map<Long, UserBasicInfoDTO> userMap = null;
         try {
             Result<List<UserBasicInfoDTO>> userResult = userService.getBatchUserBasicInfo(userIdList);
@@ -192,12 +194,14 @@ public class ProblemController {
 
         // 3. 组装 VO
         List<RankItemVO> resultList = new ArrayList<>();
-        for (Long userId : userIdList) {
+        for (ZSetOperations.TypedTuple<Object> tuple : topUserTuples) {
+            Long userId = Long.valueOf(tuple.getValue().toString());
+            Double score = tuple.getScore(); // ✅ 获取当前榜单的真实分数 (日/周 AC数)
+
             RankItemVO vo = new RankItemVO();
             vo.setUserId(userId);
-
-            // 获取分数
-            vo.setAcceptedCount(rankingManager.getUserTotalScore(userId));
+            // ✅ 核心修复：设置当前榜单的分数，而不是总分
+            vo.setAcceptedCount(score != null ? score.intValue() : 0);
 
             // 填充用户信息
             if (userMap != null && userMap.containsKey(userId)) {
@@ -205,9 +209,8 @@ public class ProblemController {
                 vo.setNickname(user.getNickname());
                 vo.setAvatar(user.getAvatar());
             } else {
-                // 兜底显示
                 vo.setNickname("用户" + userId);
-                vo.setAvatar(""); // 或者默认头像 URL
+                vo.setAvatar("");
             }
 
             resultList.add(vo);

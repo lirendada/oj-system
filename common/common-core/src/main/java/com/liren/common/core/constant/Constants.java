@@ -54,6 +54,8 @@ public class Constants {
     public static final String RANK_MONTHLY_PREFIX = "oj:rank:monthly:"; // + yyyyMM
 
     public static final Long RANK_DAILY_EXPIRE_TIME = 3l; // 日排行榜过期时间
+    public static final Long RANK_WEEKLY_EXPIRE_TIME = 7l; // 周排行榜过期时间
+    public static final Long RANK_MONTHLY_EXPIRE_TIME = 30l; // 月排行榜过期时间
 
     public static final Long RANK_SUBMIT_ADD_COUNT = 1l; // 每提交一次增加的分数
 

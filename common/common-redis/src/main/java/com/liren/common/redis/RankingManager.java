@@ -4,6 +4,7 @@ import cn.hutool.core.date.LocalDateTimeUtil; // 需要 Hutool 5.x+
 import com.liren.common.core.constant.Constants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -58,10 +59,12 @@ public class RankingManager {
         int week = now.get(WeekFields.of(Locale.getDefault()).weekOfYear());
         String weeklyKey = Constants.RANK_WEEKLY_PREFIX + year + String.format("%02d", week);
         redisTemplate.opsForZSet().incrementScore(weeklyKey, userId, Constants.RANK_SUBMIT_ADD_COUNT);
+        redisTemplate.expire(weeklyKey, Constants.RANK_WEEKLY_EXPIRE_TIME, TimeUnit.DAYS); // 周榜保留 1 周
 
         // 2.4 月榜 +1 (Key: oj:rank:monthly:202311)
         String monthlyKey = Constants.RANK_MONTHLY_PREFIX + LocalDateTimeUtil.format(now, "yyyyMM");
         redisTemplate.opsForZSet().incrementScore(monthlyKey, userId, Constants.RANK_SUBMIT_ADD_COUNT);
+        redisTemplate.expire(monthlyKey, Constants.RANK_MONTHLY_EXPIRE_TIME, TimeUnit.DAYS); // 月榜保留 1 个月
 
         return true; // 首次ac
     }
@@ -106,35 +109,35 @@ public class RankingManager {
     /**
      * 获取总榜前 N 名
      */
-    public Set<Object> getTotalRankTopN(int limit) {
-        return redisTemplate.opsForZSet().reverseRange(Constants.RANK_TOTAL_KEY, 0, limit - 1);
+    public Set<ZSetOperations.TypedTuple<Object>> getTotalRankTopN(int limit) {
+        return redisTemplate.opsForZSet().reverseRangeWithScores(Constants.RANK_TOTAL_KEY, 0, limit - 1);
     }
 
     /**
      * 获取日榜前 N 名
      */
-    public Set<Object> getDailyRankTopN(int limit) {
+    public Set<ZSetOperations.TypedTuple<Object>> getDailyRankTopN(int limit) {
         String key = Constants.RANK_DAILY_PREFIX + LocalDateTimeUtil.format(LocalDateTime.now(), "yyyyMMdd");
-        return redisTemplate.opsForZSet().reverseRange(key, 0, limit - 1);
+        return redisTemplate.opsForZSet().reverseRangeWithScores(key, 0, limit - 1);
     }
 
     /**
      * 获取周榜前 N 名
      */
-    public Set<Object> getWeeklyRankTopN(int limit) {
+    public Set<ZSetOperations.TypedTuple<Object>> getWeeklyRankTopN(int limit) {
         LocalDateTime now = LocalDateTime.now();
         int year = now.getYear();
         int week = now.get(WeekFields.of(Locale.getDefault()).weekOfYear());
         String weeklyKey = Constants.RANK_WEEKLY_PREFIX + year + String.format("%02d", week);
-        return redisTemplate.opsForZSet().reverseRange(weeklyKey, 0, limit - 1);
+        return redisTemplate.opsForZSet().reverseRangeWithScores(weeklyKey, 0, limit - 1);
     }
 
     /**
      * 获取月榜前 N 名
      */
-    public Set<Object> getMonthlyRankTopN(int limit) {
+    public Set<ZSetOperations.TypedTuple<Object>> getMonthlyRankTopN(int limit) {
         String key = Constants.RANK_MONTHLY_PREFIX + LocalDateTimeUtil.format(LocalDateTime.now(), "yyyyMM");
-        return redisTemplate.opsForZSet().reverseRange(key, 0, limit - 1);
+        return redisTemplate.opsForZSet().reverseRangeWithScores(key, 0, limit - 1);
     }
 
     /**
