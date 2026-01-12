@@ -3,6 +3,7 @@ package com.liren.contest.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.liren.api.problem.api.problem.ProblemInterface;
@@ -35,6 +36,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -78,39 +80,53 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
 
     /**
      * 查询竞赛列表
+     * 核心逻辑：
+     * 1. 筛选：完全基于 start_time 和 end_time 与当前时间的比较，不依赖数据库 status 字段。
+     * 2. 排序：利用 CASE WHEN 语法，将"进行中"的比赛置顶。
      */
     @Override
     public Page<ContestVO> listContestVO(ContestQueryRequest queryRequest) {
-        LambdaQueryWrapper<ContestEntity> wrapper = new LambdaQueryWrapper<>();
+        // 使用 QueryWrapper 以便灵活处理 SQL 片段
+        QueryWrapper<ContestEntity> queryWrapper = new QueryWrapper<>();
 
-        // 关键词搜索
-        if(StrUtil.isNotBlank(queryRequest.getKeyword())) {
-            wrapper.like(ContestEntity::getTitle, queryRequest.getKeyword());
+        // 1. 关键词搜索
+        if (StrUtil.isNotBlank(queryRequest.getKeyword())) {
+            queryWrapper.like("title", queryRequest.getKeyword());
         }
 
-        // 状态搜索
-        // 0-未开始: startTime > now
-        // 1-进行中: startTime <= now && endTime >= now
-        // 2-已结束: endTime < now
-        if(queryRequest.getStatus() != null) {
-            LocalDateTime now = LocalDateTime.now();
-            if(ContestStatusEnum.NOT_STARTED.getCode().equals(queryRequest.getStatus())) {
-                wrapper.gt(ContestEntity::getStartTime, now);
-            } else if(queryRequest.getStatus().equals(ContestStatusEnum.RUNNING.getCode())) {
-                wrapper.le(ContestEntity::getStartTime, now).ge(ContestEntity::getEndTime, now);
-            } else {
-                wrapper.lt(ContestEntity::getEndTime, now);
+        // 2. 状态筛选 (完全基于时间)
+        // 0-未开始: start_time > now
+        // 1-进行中: start_time <= now <= end_time
+        // 2-已结束: end_time < now
+        LocalDateTime now = LocalDateTime.now();
+        if (queryRequest.getStatus() != null) {
+            Integer status = queryRequest.getStatus();
+            if (ContestStatusEnum.NOT_STARTED.getCode().equals(status)) {
+                queryWrapper.gt("start_time", now);
+            } else if (ContestStatusEnum.RUNNING.getCode().equals(status)) {
+                queryWrapper.le("start_time", now).ge("end_time", now);
+            } else if (ContestStatusEnum.ENDED.getCode().equals(status)) {
+                queryWrapper.lt("end_time", now);
             }
         }
 
-        // 按照时间倒序排序
-        wrapper.orderByDesc(ContestEntity::getStartTime);
+        // 3. 自定义排序：进行中置顶
+        // 格式化时间用于 SQL 拼接
+        String nowStr = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
-        // 分页查询
-        Page<ContestEntity> page = this.page(new Page<>(queryRequest.getCurrent(), queryRequest.getPageSize()), wrapper);
+        // SQL逻辑：如果是进行中(startTime <= now <= endTime)，排序权重为0(最前)；否则为1。
+        // 同权重下，按开始时间倒序(新比赛在前)。
+        String orderBySql = String.format(
+                "ORDER BY CASE WHEN '%s' >= start_time AND '%s' <= end_time THEN 0 ELSE 1 END ASC, start_time DESC",
+                nowStr, nowStr
+        );
+        queryWrapper.last(orderBySql);
+
+        // 4. 分页查询
+        Page<ContestEntity> page = this.page(new Page<>(queryRequest.getCurrent(), queryRequest.getPageSize()), queryWrapper);
         Page<ContestVO> contestVOPage = new Page<>(page.getCurrent(), page.getSize(), page.getTotal());
 
-        // 转换成VO对象并设置状态
+        // 5. 转换 VO
         List<ContestVO> contestVOS = page.getRecords().stream()
                 .map(this::convertContestEntity2ContestVO).collect(Collectors.toList());
 
@@ -449,10 +465,13 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
             contestVO.setStatusDesc(ContestStatusEnum.ENDED.getMessage());
         }
 
-        Duration duration = Duration.between(startTime, endTime);
-        long hours = duration.toHours();
-        long minutes = duration.toMinutes() % 60;
-        contestVO.setDuration(String.format("%d小时%d分", hours, minutes));
+        // 计算持续时间文本 (例如: 2小时30分)
+        if (startTime != null && endTime != null) {
+            Duration duration = Duration.between(startTime, endTime);
+            long hours = duration.toHours();
+            long minutes = duration.toMinutes() % 60;
+            contestVO.setDuration(String.format("%d小时%d分", hours, minutes));
+        }
 
         return contestVO;
     }
