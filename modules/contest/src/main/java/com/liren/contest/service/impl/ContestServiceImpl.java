@@ -215,7 +215,41 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
      */
     @Override
     public List<ContestProblemVO> getContestProblemList(Long contestId) {
-        // 1. 查出该比赛所有的题目关联
+        // 1. 获取当前用户和比赛信息
+        Long userId = UserContext.getUserId();
+        String userRole = UserContext.getUserRole();
+        boolean isAdmin = "admin".equals(userRole);
+
+        ContestEntity contest = this.getById(contestId);
+        if (contest == null) {
+            throw new ContestException(ResultCode.CONTEST_NOT_FOUND);
+        }
+
+        // 2. 权限校验 (非管理员需要校验)
+        if (!isAdmin) {
+            LocalDateTime now = LocalDateTime.now();
+
+            // A. 比赛未开始：绝对禁止查看
+            if (contest.getStartTime().isAfter(now)) {
+                throw new ContestException(ResultCode.CONTEST_NOT_STARTED);
+            }
+
+            // B. 比赛进行中：必须报名才能查看
+            if (contest.getStartTime().isBefore(now) && contest.getEndTime().isAfter(now)) {
+                // 未登录
+                if (userId == null) {
+                    throw new ContestException(ResultCode.UNAUTHORIZED);
+                }
+                // 未报名
+                if (!isUserRegistered(contestId, userId)) {
+                    throw new ContestException(ResultCode.USER_NOT_REGISTERED_CONTEST);
+                }
+            }
+            // C. 比赛已结束：默认公开 (不做限制)
+        }
+
+
+        // 3. 查出该比赛所有的题目关联
         LambdaQueryWrapper<ContestProblemEntity> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ContestProblemEntity::getContestId, contestId);
         wrapper.orderByAsc(ContestProblemEntity::getDisplayId); // 按 A, B, C 排序
@@ -225,7 +259,7 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
             return Collections.emptyList();
         }
 
-        // 2. 转换为 VO 并填充题目详情
+        // 4. 转换为 VO 并填充题目详情
         return entities.stream().map(entity -> {
             ContestProblemVO vo = new ContestProblemVO();
             BeanUtil.copyProperties(entity, vo);
