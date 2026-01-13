@@ -6,6 +6,7 @@ import com.liren.common.core.result.Result;
 import com.liren.user.dto.UserLoginDTO;
 import com.liren.user.entity.UserEntity;
 import com.liren.user.vo.UserLoginVO;
+import com.liren.user.vo.UserVO;
 
 import java.util.List;
 
@@ -21,4 +22,9 @@ public interface IUserService extends IService<UserEntity> {
      * 更新用户的提交统计信息
      */
     boolean updateUserStats(Long userId, boolean isAc);
+
+    /**
+     * 获取用户信息
+     */
+    UserVO getUserInfo(Long userId);
 }

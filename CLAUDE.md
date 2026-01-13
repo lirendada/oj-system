@@ -234,7 +234,7 @@ Contest Service 验证权限
 #### 1. tb_user（用户表）
 ```sql
 主要字段：
-- user_id          BIGINT       用户ID（主键）
+- user_id          BIGINT       用户ID（主键，雪花算法）
 - user_account     VARCHAR(50)  账号（唯一）
 - password         VARCHAR(255) 密码（加密）
 - nick_name        VARCHAR(50)  昵称
@@ -258,7 +258,7 @@ Contest Service 验证权限
 #### 2. tb_problem（题目表）
 ```sql
 主要字段：
-- problem_id       BIGINT       题目ID（主键）
+- problem_id       BIGINT       题目ID（主键，雪花算法）
 - title            VARCHAR(200) 题目标题
 - difficulty       TINYINT      难度（1-简单 2-中等 3-困难）
 - submit_num       INT          提交总数
@@ -287,7 +287,7 @@ Contest Service 验证权限
 #### 3. tb_test_case（测试用例表）
 ```sql
 主要字段：
-- case_id          BIGINT       用例ID（主键）
+- case_id          BIGINT       用例ID（主键，雪花算法）
 - problem_id       BIGINT       题目ID
 - input            LONGTEXT     输入数据（大文本）
 - output           LONGTEXT     期望输出（大文本）
@@ -301,14 +301,14 @@ Contest Service 验证权限
 #### 4. tb_submit_record（提交记录表）
 ```sql
 主要字段：
-- submit_id        BIGINT       提交ID（主键）
+- submit_id        BIGINT       提交ID（主键，雪花算法）
 - problem_id       BIGINT       题目ID
 - contest_id       BIGINT       竞赛ID（0表示非竞赛提交）
 - user_id          BIGINT       用户ID
 - code             LONGTEXT     提交的代码
 - language         VARCHAR(20)  编程语言（Java/C++/Python）
 - status           TINYINT      判题状态（10-待判题 20-判题中 30-结束）
-- judge_result     TINYINT      判题结果（0-AC, 1-WA, 2-TLE, 3-MLE, 4-RE, 5-CE等）
+- judge_result     TINYINT      判题结果（1-AC, 2-WA, 3-TLE, 4-MLE, 5-RE, 6-CE, 7-SE）
 - time_cost        INT          最大耗时（ms）
 - memory_cost      INT          最大内存（KB）
 - error_message    TEXT         错误信息（编译错误/运行错误）
@@ -328,7 +328,7 @@ Contest Service 验证权限
 #### 5. tb_contest（竞赛表）
 ```sql
 主要字段：
-- contest_id       BIGINT       竞赛ID（主键）
+- contest_id       BIGINT       竞赛ID（主键，雪花算法）
 - title            VARCHAR(200) 竞赛标题
 - description      TEXT         竞赛描述
 - status           TINYINT      状态（0-未开始 1-进行中 2-已结束）
@@ -370,7 +370,7 @@ Contest Service 验证权限
 #### 8. tb_problem_tag（题目标签表）
 ```sql
 主要字段：
-- tag_id           BIGINT       标签ID（主键）
+- tag_id           BIGINT       标签ID（主键，雪花算法）
 - tag_name         VARCHAR(50)  标签名称
 - tag_color        VARCHAR(20)  标签颜色（如#FF0000）
 
@@ -393,7 +393,7 @@ Contest Service 验证权限
 #### 10. tb_solution（题解表）
 ```sql
 主要字段：
-- solution_id      BIGINT       题解ID（主键）
+- solution_id      BIGINT       题解ID（主键，雪花算法）
 - problem_id       BIGINT       题目ID
 - user_id          BIGINT       发布用户ID
 - title            VARCHAR(100) 题解标题
@@ -416,7 +416,7 @@ Contest Service 验证权限
 #### 11. tb_sys_user（系统管理员表）
 ```sql
 主要字段：
-- user_id          BIGINT       管理员ID（主键）
+- user_id          BIGINT       管理员ID（主键，雪花算法）
 - user_account     VARCHAR(50)  账号（唯一）
 - password         VARCHAR(255) 密码
 - nick_name        VARCHAR(50)  昵称
@@ -452,21 +452,22 @@ mysql -u root -p oj_system < deploy/oj_system.sql
 ### 1. JudgeResultEnum（判题结果）
 ```java
 // 对应数据库字段：tb_submit_record.judge_result (TINYINT)
-ACCEPTED(0, "成功", "Accepted"),
-WRONG_ANSWER(1, "答案错误", "Wrong Answer"),
-TIME_LIMIT_EXCEEDED(2, "超时", "Time Limit Exceeded"),
-MEMORY_LIMIT_EXCEEDED(3, "超内存", "Memory Limit Exceeded"),
-RUNTIME_ERROR(4, "运行错误", "Runtime Error"),
-COMPILE_ERROR(5, "编译错误", "Compile Error"),
-SYSTEM_ERROR(6, "系统错误", "System Error");
+ACCEPTED(1, "通过 (AC)"),
+WRONG_ANSWER(2, "答案错误 (WA)"),
+TIME_LIMIT_EXCEEDED(3, "运行超时 (TLE)"),
+MEMORY_LIMIT_EXCEEDED(4, "内存超限 (MLE)"),
+RUNTIME_ERROR(5, "运行错误 (RE)"),
+COMPILE_ERROR(6, "编译错误 (CE)"),
+SYSTEM_ERROR(7, "系统错误 (SE)");
 ```
 
 ### 2. SubmitStatusEnum（提交状态）
 ```java
 // 对应数据库字段：tb_submit_record.status (TINYINT)
-PENDING(10, "等待判题"),
+WAITING(10, "等待判题"),
 JUDGING(20, "判题中"),
-SUCCESS(30, "判题完成");
+SUCCEED(30, "判题完成"),
+FAILED(40, "判题失败");
 ```
 
 ### 3. LanguageEnum（编程语言）
@@ -497,6 +498,13 @@ HARD(3, "困难");
 ```java
 // 对应数据库字段：tb_problem.status (TINYINT)
 HIDDEN(0, "隐藏"),
+NORMAL(1, "正常");
+```
+
+### 6.1 UserStatusEnum（用户状态）
+```java
+// 对应数据库字段：tb_user.status (TINYINT)
+DISABLED(0, "禁用"),
 NORMAL(1, "正常");
 ```
 
@@ -614,8 +622,9 @@ spring:
 | POST | `/problem/add` | 新增题目 | `ProblemAddDTO` | `Result<Boolean>` |
 | POST | `/problem/list/page` | 分页获取题目列表 | `ProblemQueryRequest` | `Result<Page<ProblemVO>>` |
 | GET | `/problem/detail/{problemId}` | 获取题目详情 | `problemId` (Path) | `Result<ProblemDetailVO>` |
-| POST | `/problem/submit` | 提交代码 | `ProblemSubmitDTO` | `Result<Long>` (submitId) |
+| POST | `/problem/submit` | 提交代码 | `ProblemSubmitDTO` | `Result<String>` (submitId) |
 | GET | `/problem/submit/result/{submitId}` | 查询提交记录详情 | `submitId` (Path) | `Result<SubmitRecordVO>` |
+| POST | `/problem/submit/result/list` | 获取当前题目的提交记录列表 | `ProblemSubmitQueryRequest` | `Result<Page<SubmitRecordVO>>` |
 | GET | `/problem/rank/total` | 获取总榜 Top 10 | - | `Result<List<RankItemVO>>` |
 | GET | `/problem/rank/daily` | 获取日榜 Top 10 | - | `Result<List<RankItemVO>>` |
 | GET | `/problem/rank/weekly` | 获取周榜 Top 10 | - | `Result<List<RankItemVO>>` |
@@ -653,6 +662,7 @@ spring:
 | GET | `/contest/inner/hasAccess` | 校验题目查看权限 | `contestId`, `userId` (Query) | `Result<Boolean>` |
 | GET | `/contest/inner/getContestIdByProblemId` | 根据题目获取比赛ID | `problemId` (Query) | `Result<Long>` |
 | GET | `/contest/inner/isContestOngoing` | 判断比赛是否进行中 | `contestId` (Query) | `Result<Boolean>` |
+| GET | `/contest/inner/isContestEnded` | 判断比赛是否已经结束 | `contestId` (Query) | `Result<Boolean>` |
 
 ---
 
@@ -671,26 +681,27 @@ spring:
 ```java
 @FeignClient(value = "user-service", path = "/user/inner")
 ```
-- `getBatchBasicInfo(@RequestParam("userIds") List<Long> userIds)` - 批量获取用户基本信息
-- `updateStats(@RequestParam("userId") Long userId, @RequestParam("isAc") Boolean isAc)` - 更新用户统计
+- `getBatchUserBasicInfo(@RequestParam("userIds") List<Long> userIds)` - 批量获取用户基本信息
+- `updateUserStats(@RequestParam("userId") Long userId, @RequestParam("isAc") Boolean isAc)` - 更新用户统计
 
 #### ProblemInterface（api 模块）
 ```java
 @FeignClient(name = "problem-service", path = "/problem/inner")
 ```
 - `updateSubmitResult(ProblemSubmitUpdateDTO problemSubmitUpdateDTO)` - 更新提交结果
-- `getTestCase(@PathVariable("problemId") Long problemId)` - 获取测试用例
-- `getSubmitById(@RequestParam("submitId") Long submitId)` - 获取提交记录
-- `getContestBrief(@PathVariable("problemId") Long problemId)` - 获取题目基本信息
+- `getTestCases(@PathVariable("problemId") Long problemId)` - 获取测试用例
+- `getSubmitRecord(@PathVariable("submitId") Long submitId)` - 获取提交记录
+- `getProblemBasicInfo(@PathVariable("problemId") Long problemId)` - 获取题目基本信息
 
 #### ContestInterface（api 模块）
 ```java
 @FeignClient(name = "contest-service", path = "/contest/inner")
 ```
-- `validatePermission(@RequestParam("contestId") Long contestId, @RequestParam("userId") Long userId)` - 验证竞赛权限
+- `validateContestPermission(@RequestParam("contestId") Long contestId, @RequestParam("userId") Long userId)` - 验证竞赛权限
 - `hasAccess(@RequestParam("contestId") Long contestId, @RequestParam("userId") Long userId)` - 校验题目查看权限
 - `getContestIdByProblemId(@RequestParam("problemId") Long problemId)` - 根据题目获取比赛ID
 - `isContestOngoing(@RequestParam("contestId") Long contestId)` - 判断比赛是否进行中
+- `isContestEnded(@RequestParam("contestId") Long contestId)` - 判断比赛是否已经结束
 
 ---
 
@@ -698,10 +709,10 @@ spring:
 | 服务模块 | 公开接口 | 内部接口 | 总计 |
 |---------|---------|---------|------|
 | 用户服务 | 1 | 2 | 3 |
-| 题目服务 | 10 | 4 | 14 |
-| 竞赛服务 | 8 | 4 | 12 |
+| 题目服务 | 11 | 4 | 15 |
+| 竞赛服务 | 8 | 5 | 13 |
 | 系统服务 | 1 | 0 | 1 |
-| **总计** | **20** | **10** | **30** |
+| **总计** | **21** | **11** | **32** |
 
 ---
 

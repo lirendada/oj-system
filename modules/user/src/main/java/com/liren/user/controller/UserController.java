@@ -1,19 +1,19 @@
 package com.liren.user.controller;
 
+import com.liren.common.core.context.UserContext;
 import com.liren.common.core.result.Result;
+import com.liren.common.core.result.ResultCode;
 import com.liren.user.dto.UserLoginDTO;
 import com.liren.user.service.IUserService;
 import com.liren.user.vo.UserLoginVO;
+import com.liren.user.vo.UserVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/user")
@@ -37,5 +37,19 @@ public class UserController {
     public Result<UserLoginVO> login(@Valid @RequestBody UserLoginDTO loginDTO) {
         // 这里直接返回 Service 的结果即可
         return Result.success(userService.login(loginDTO));
+    }
+
+    @GetMapping("/info")
+    @Operation(summary = "获取当前登录用户信息")
+    public Result<UserVO> getInfo() {
+        // 1. 从 ThreadLocal/Token 中获取当前用户ID
+        Long userId = UserContext.getUserId();
+        if (userId == null) {
+            return Result.fail(ResultCode.UNAUTHORIZED.getCode(), ResultCode.UNAUTHORIZED.getMessage());
+        }
+
+        // 2. 查询用户信息
+        UserVO userVO = userService.getUserInfo(userId);
+        return Result.success(userVO);
     }
 }

@@ -1,5 +1,6 @@
 package com.liren.user.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollectionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -16,6 +17,7 @@ import com.liren.user.exception.UserLoginException;
 import com.liren.user.mapper.UserMapper;
 import com.liren.user.service.IUserService;
 import com.liren.user.vo.UserLoginVO;
+import com.liren.user.vo.UserVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -113,5 +115,34 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         }
 
         return this.update(wrapper);
+    }
+
+
+    /**
+     * 获取用户信息
+     */
+    @Override
+    public UserVO getUserInfo(Long userId) {
+        // 1. 查询数据库
+        UserEntity userEntity = this.getById(userId);
+
+        // 2. 判空
+        if (userEntity == null) {
+            throw new UserLoginException(ResultCode.USER_NOT_FOUND);
+        }
+
+        // 3. 转换为 VO
+        UserVO userVO = new UserVO();
+        // 因为 UserVO 的字段名和 UserEntity 的字段名（驼峰）现在完全一致，
+        // 所以 BeanUtil 可以自动拷贝所有对应字段
+        BeanUtil.copyProperties(userEntity, userVO);
+
+        // 4. 头像默认值处理
+        // 如果数据库里 avatar 是 null 或者 空字符串，给个默认头像
+        if (userVO.getAvatar() == null || userVO.getAvatar().isEmpty()) {
+            userVO.setAvatar("https://p.ssl.qhimg.com/sdm/480_480_/t01520a1bd1802ae864.jpg");
+        }
+
+        return userVO;
     }
 }
