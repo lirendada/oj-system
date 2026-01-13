@@ -9,10 +9,12 @@ import com.liren.api.problem.dto.problem.TestCaseDTO;
 import com.liren.problem.dto.ProblemAddDTO;
 import com.liren.problem.dto.ProblemQueryRequest;
 import com.liren.problem.dto.ProblemSubmitDTO;
+import com.liren.problem.dto.ProblemSubmitQueryRequest;
 import com.liren.problem.vo.ProblemDetailVO;
 import com.liren.problem.entity.ProblemEntity;
 import com.liren.problem.vo.ProblemVO;
 import com.liren.problem.vo.SubmitRecordVO;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -43,4 +45,7 @@ public interface IProblemService extends IService<ProblemEntity> {
 
     // 获取题目基本信息 (内部接口，用于比赛服务调用)
     ProblemBasicInfoDTO getProblemBasicInfo(Long problemId);
+
+    // 获取提交记录列表
+    Page<SubmitRecordVO> listSubmitRecord(@Valid ProblemSubmitQueryRequest queryRequest);
 }

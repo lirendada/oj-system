@@ -22,6 +22,7 @@ import com.liren.common.redis.RankingManager;
 import com.liren.problem.dto.ProblemAddDTO;
 import com.liren.problem.dto.ProblemQueryRequest;
 import com.liren.problem.dto.ProblemSubmitDTO;
+import com.liren.problem.dto.ProblemSubmitQueryRequest;
 import com.liren.problem.entity.*;
 import com.liren.problem.mapper.*;
 import com.liren.problem.vo.ProblemDetailVO;
@@ -632,6 +633,50 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         ProblemBasicInfoDTO basicInfoDTO = new ProblemBasicInfoDTO();
         BeanUtil.copyProperties(problem, basicInfoDTO);
         return basicInfoDTO;
+    }
+
+
+    /**
+     * 获取提交记录列表（分页）
+     */
+    @Override
+    public Page<SubmitRecordVO> listSubmitRecord(ProblemSubmitQueryRequest queryRequest) {
+        // 1. 获取当前登录用户
+        Long userId = UserContext.getUserId();
+        if (userId == null) {
+            return new Page<>(queryRequest.getCurrent(), queryRequest.getPageSize());
+        }
+
+        // 2. 构建查询条件
+        LambdaQueryWrapper<ProblemSubmitRecordEntity> wrapper = new LambdaQueryWrapper<>();
+        // 只查当前用户的
+        wrapper.eq(ProblemSubmitRecordEntity::getUserId, userId);
+        // 只查当前题目的 (如果前端传了 problemId)
+        wrapper.eq(queryRequest.getProblemId() != null, ProblemSubmitRecordEntity::getProblemId, queryRequest.getProblemId());
+
+        // 按时间倒序
+        wrapper.orderByDesc(ProblemSubmitRecordEntity::getCreateTime);
+
+        // 3. 分页查询
+        Page<ProblemSubmitRecordEntity> page = problemSubmitMapper.selectPage(
+                new Page<>(queryRequest.getCurrent(), queryRequest.getPageSize()),
+                wrapper
+        );
+
+        // 4. 转换为 VO (列表页隐藏代码和错误信息，减少传输量)
+        List<SubmitRecordVO> voList = page.getRecords().stream().map(entity -> {
+            SubmitRecordVO vo = new SubmitRecordVO();
+            BeanUtil.copyProperties(entity, vo);
+            vo.setCode(null);         // 列表页不显示代码
+            vo.setErrorMessage(null); // 列表页不显示错误详情
+            return vo;
+        }).collect(Collectors.toList());
+
+        Page<SubmitRecordVO> resultPage = new Page<>();
+        BeanUtil.copyProperties(page, resultPage);
+        resultPage.setRecords(voList);
+
+        return resultPage;
     }
 
 

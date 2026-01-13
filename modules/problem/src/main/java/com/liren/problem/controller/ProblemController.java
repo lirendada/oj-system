@@ -9,6 +9,7 @@ import com.liren.common.core.result.Result;
 import com.liren.problem.dto.ProblemAddDTO;
 import com.liren.problem.dto.ProblemQueryRequest;
 import com.liren.problem.dto.ProblemSubmitDTO;
+import com.liren.problem.dto.ProblemSubmitQueryRequest;
 import com.liren.problem.vo.ProblemDetailVO;
 import com.liren.problem.service.IProblemService;
 import com.liren.problem.vo.ProblemVO;
@@ -138,6 +139,22 @@ public class ProblemController {
     )
     public Result<SubmitRecordVO> getSubmitResult(@PathVariable("submitId") Long submitId) {
         return Result.success(problemService.getSubmitRecord(submitId));
+    }
+
+    @PostMapping("/submit/result/list")
+    @Operation(
+            summary = "获取当前题目的提交记录列表",
+            requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    required = true,
+                    description = "查询条件",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = ProblemSubmitQueryRequest.class)
+                    )
+            )
+    )
+    public Result<Page<SubmitRecordVO>> listSubmitRecord(@RequestBody ProblemSubmitQueryRequest queryRequest) {
+        return Result.success(problemService.listSubmitRecord(queryRequest));
     }
 
 
