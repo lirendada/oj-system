@@ -3,10 +3,8 @@ package com.liren.user.controller;
 import com.liren.common.core.context.UserContext;
 import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
-import com.liren.user.dto.UserLoginDTO;
-import com.liren.user.dto.UserRegisterDTO;
-import com.liren.user.dto.UserResetPassDTO;
-import com.liren.user.dto.UserSendCodeDTO;
+import com.liren.user.dto.*;
+import com.liren.user.exception.UserException;
 import com.liren.user.service.IUserService;
 import com.liren.user.vo.UserLoginVO;
 import com.liren.user.vo.UserVO;
@@ -89,5 +87,15 @@ public class UserController {
     public Result<Void> resetPassword(@Valid @RequestBody UserResetPassDTO req) {
         userService.resetPassword(req);
         return Result.success();
+    }
+
+    @PostMapping("/update/my")
+    @Operation(summary = "更新个人信息")
+    public Result<Boolean> updateMyInfo(@RequestBody UserUpdateMyDTO userUpdateMyDTO) {
+        if (userUpdateMyDTO == null) {
+            throw new UserException(ResultCode.PARAM_ERROR);
+        }
+        boolean result = userService.updateMyInfo(userUpdateMyDTO);
+        return Result.success(result);
     }
 }

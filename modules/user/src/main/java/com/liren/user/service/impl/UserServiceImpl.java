@@ -8,9 +8,11 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
 import com.liren.common.core.constant.Constants;
+import com.liren.common.core.context.UserContext;
 import com.liren.common.redis.RedisUtil;
 import com.liren.user.dto.UserRegisterDTO;
 import com.liren.user.dto.UserResetPassDTO;
+import com.liren.user.dto.UserUpdateMyDTO;
 import com.liren.user.entity.UserEntity;
 import com.liren.common.core.enums.UserStatusEnum;
 import com.liren.common.core.result.ResultCode;
@@ -25,6 +27,7 @@ import com.liren.user.vo.UserLoginVO;
 import com.liren.user.vo.UserVO;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -254,5 +257,35 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
         // 4. 删除验证码
         redisUtil.del(redisKey);
+    }
+
+
+    /**
+     * 更新当前登录用户信息
+     */
+    @Override
+    public boolean updateMyInfo(UserUpdateMyDTO req) {
+        Long userId = UserContext.getUserId();
+        if (userId == null) {
+            throw new UserException(ResultCode.UNAUTHORIZED);
+        }
+
+        // 1. 准备更新实体
+        UserEntity updateUser = new UserEntity();
+        updateUser.setUserId(userId);
+
+        // 2. 仅更新非空字段，严格对应数据库字段
+        if (StringUtils.hasText(req.getNickName())) {
+            updateUser.setNickName(req.getNickName());
+        }
+        if (StringUtils.hasText(req.getAvatar())) {
+            updateUser.setAvatar(req.getAvatar());
+        }
+        if (StringUtils.hasText(req.getSchool())) {
+            updateUser.setSchool(req.getSchool());
+        }
+
+        // 3. 执行更新
+        return this.updateById(updateUser);
     }
 }

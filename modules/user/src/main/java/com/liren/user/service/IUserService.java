@@ -6,6 +6,7 @@ import com.liren.common.core.result.Result;
 import com.liren.user.dto.UserLoginDTO;
 import com.liren.user.dto.UserRegisterDTO;
 import com.liren.user.dto.UserResetPassDTO;
+import com.liren.user.dto.UserUpdateMyDTO;
 import com.liren.user.entity.UserEntity;
 import com.liren.user.vo.UserLoginVO;
 import com.liren.user.vo.UserVO;
@@ -45,4 +46,9 @@ public interface IUserService extends IService<UserEntity> {
      * 通过验证码重置密码
      */
     void resetPassword(UserResetPassDTO req);
+
+    /**
+     * 更新当前登录用户信息
+     */
+    boolean updateMyInfo(UserUpdateMyDTO userUpdateMyDTO);
 }
