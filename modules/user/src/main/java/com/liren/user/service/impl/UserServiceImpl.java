@@ -2,18 +2,19 @@ package com.liren.user.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollectionUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
+import com.liren.user.dto.UserRegisterDTO;
 import com.liren.user.entity.UserEntity;
 import com.liren.common.core.enums.UserStatusEnum;
 import com.liren.common.core.result.ResultCode;
 import com.liren.common.core.utils.BCryptUtil;
 import com.liren.common.core.utils.JwtUtil;
 import com.liren.user.dto.UserLoginDTO;
-import com.liren.user.exception.UserLoginException;
+import com.liren.user.exception.UserException;
 import com.liren.user.mapper.UserMapper;
 import com.liren.user.service.IUserService;
 import com.liren.user.vo.UserLoginVO;
@@ -44,17 +45,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
                 wrapper.eq(UserEntity::getUserAccount, userLoginDTO.getUserAccount())
         );
         if(user == null) {
-            throw new UserLoginException(ResultCode.USER_NOT_FOUND);
+            throw new UserException(ResultCode.USER_NOT_FOUND);
         }
 
         // 2. 判断用户是否状态正常
         if(UserStatusEnum.FORBIDDEN.getCode().equals(user.getStatus())) {
-            throw new UserLoginException(ResultCode.USER_IS_FORBIDDEN);
+            throw new UserException(ResultCode.USER_IS_FORBIDDEN);
         }
 
         // 3. 校验密码
         if(!BCryptUtil.isMatch(userLoginDTO.getPassword(), user.getPassword())) {
-            throw new UserLoginException(ResultCode.USER_PASSWORD_ERROR);
+            throw new UserException(ResultCode.USER_PASSWORD_ERROR);
         }
 
         // 4. 生成 Token (带上 user 角色)
@@ -128,7 +129,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
         // 2. 判空
         if (userEntity == null) {
-            throw new UserLoginException(ResultCode.USER_NOT_FOUND);
+            throw new UserException(ResultCode.USER_NOT_FOUND);
         }
 
         // 3. 转换为 VO
@@ -144,5 +145,50 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         }
 
         return userVO;
+    }
+
+
+    /**
+     * 用户注册
+     */
+    @Override
+    public Long register(UserRegisterDTO userRegisterDTO) {
+        String userAccount = userRegisterDTO.getUserAccount();
+        String password = userRegisterDTO.getPassword();
+        String checkPassword = userRegisterDTO.getCheckPassword();
+
+        // 1. 校验两次密码是否一致
+        if (!StrUtil.equals(password, checkPassword)) {
+            throw new UserException(ResultCode.PASSWORD_NOT_MATCH);
+        }
+
+        // 2. 检查账号是否重复
+        LambdaQueryWrapper<UserEntity> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(UserEntity::getUserAccount, userAccount);
+        long count = this.count(queryWrapper);
+        if (count > 0) {
+            throw new UserException(ResultCode.USER_ALREADY_EXISTS);
+        }
+
+        // 3. 密码加密
+        String encryptPassword = BCryptUtil.encode(password);
+
+        // 4. 插入数据
+        UserEntity userEntity = new UserEntity();
+        userEntity.setUserAccount(userAccount);
+        userEntity.setPassword(encryptPassword);
+        // 默认昵称与账号相同，用户后续可修改
+        userEntity.setNickName(userAccount);
+        // 初始状态正常
+        userEntity.setStatus(UserStatusEnum.NORMAL.getCode());
+        // 默认头像（也可以留空，由 getUserInfo 处理默认值，这里显式设置一下更安全）
+        userEntity.setAvatar("https://p.ssl.qhimg.com/sdm/480_480_/t01520a1bd1802ae864.jpg");
+
+        boolean saveResult = this.save(userEntity);
+        if (!saveResult) {
+            throw new UserException(ResultCode.Register_FAILED);
+        }
+
+        return userEntity.getUserId();
     }
 }

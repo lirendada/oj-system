@@ -48,6 +48,9 @@ public enum ResultCode {
     NOT_ACCESS_TO_CONTEST(6019, "无权访问该比赛/题目"),
     FORBIDDEN_OPERATION(6020, "该题目不属于指定的比赛"),
     SUBMIT_LOGIC_ERROR(6021, "该题目正在进行比赛，请前往比赛页面提交，或等待比赛结束。"),
+    USER_ALREADY_EXISTS(6022, "用户名已存在，请勿重复注册"),
+    Register_FAILED(6023, "注册失败"),
+    PASSWORD_NOT_MATCH(6024, "两次输入的密码不一致"),
 
     /* ===================== 程序缺陷类（9xxx） ===================== */
     NULL_POINTER(9001, "空指针异常"),

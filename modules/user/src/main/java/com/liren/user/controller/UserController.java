@@ -4,6 +4,7 @@ import com.liren.common.core.context.UserContext;
 import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
 import com.liren.user.dto.UserLoginDTO;
+import com.liren.user.dto.UserRegisterDTO;
 import com.liren.user.service.IUserService;
 import com.liren.user.vo.UserLoginVO;
 import com.liren.user.vo.UserVO;
@@ -51,5 +52,26 @@ public class UserController {
         // 2. 查询用户信息
         UserVO userVO = userService.getUserInfo(userId);
         return Result.success(userVO);
+    }
+
+    @PostMapping("/register")
+    @Operation(
+        summary = "用户注册",
+        description = "用户注册接口，返回 Token 及用户基本信息",
+        requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                required = true,
+                description = "登录信息",
+                content = @Content(
+                        mediaType = "application/json",
+                        schema = @Schema(implementation = UserRegisterDTO.class)
+                )
+        )
+    )
+    public Result<Long> register(@Valid @RequestBody UserRegisterDTO userRegisterDTO) {
+        if (userRegisterDTO == null) {
+            return Result.fail(ResultCode.PARAM_ERROR.getCode(), "请求参数不能为空");
+        }
+        Long userId = userService.register(userRegisterDTO);
+        return Result.success(userId);
     }
 }
