@@ -70,4 +70,8 @@ public class Constants {
     public static final Integer CONTEST_QUESTION_SCORE = 25; // 每道题的分数
 
     public static final Integer RANK_TOTAL_SIZE = 10; // 排行榜大小
+
+
+    // ========= 其他 =========
+    public static final String FORGET_PASS_CODE_PREFIX = "user:forget:code:"; // 忘记密码验证码前缀
 }

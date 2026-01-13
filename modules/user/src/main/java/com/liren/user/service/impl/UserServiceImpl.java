@@ -7,7 +7,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
+import com.liren.common.core.constant.Constants;
+import com.liren.common.redis.RedisUtil;
 import com.liren.user.dto.UserRegisterDTO;
+import com.liren.user.dto.UserResetPassDTO;
 import com.liren.user.entity.UserEntity;
 import com.liren.common.core.enums.UserStatusEnum;
 import com.liren.common.core.result.ResultCode;
@@ -16,6 +19,7 @@ import com.liren.common.core.utils.JwtUtil;
 import com.liren.user.dto.UserLoginDTO;
 import com.liren.user.exception.UserException;
 import com.liren.user.mapper.UserMapper;
+import com.liren.user.service.IMailService;
 import com.liren.user.service.IUserService;
 import com.liren.user.vo.UserLoginVO;
 import com.liren.user.vo.UserVO;
@@ -35,6 +39,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private IMailService mailService;
+
+    @Autowired
+    private RedisUtil redisUtil; // 假设 common-redis 中有这个工具类
 
     //TODO：redis优化
     @Override
@@ -190,5 +200,59 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         }
 
         return userEntity.getUserId();
+    }
+
+
+    /**
+     * 发送忘记密码验证码
+     */
+    @Override
+    public void sendForgetPasswordCode(String email) {
+        // 1. 检查用户是否存在
+        UserEntity user = this.getOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getEmail, email));
+        if (user == null) {
+            throw new UserException(ResultCode.USER_NOT_FOUND);
+        }
+
+        // 2. 生成 6 位随机验证码
+        String code = String.valueOf((int)((Math.random() * 9 + 1) * 100000));
+
+        // 3. 保存到 Redis，有效期 5 分钟
+        redisUtil.set(Constants.FORGET_PASS_CODE_PREFIX + email, code, 300);
+
+        // 4. 发送邮件
+        mailService.sendSimpleMail(email, "【Liren OJ】重置密码验证码",
+                "您的验证码是：" + code + "，有效期 5 分钟，请勿泄露给他人。");
+    }
+
+
+    /**
+     * 重置密码
+     */
+    @Override
+    public void resetPassword(UserResetPassDTO req) {
+        String redisKey = Constants.FORGET_PASS_CODE_PREFIX + req.getEmail();
+
+        // 1. 校验验证码
+        if (!redisUtil.hasKey(redisKey)) {
+            throw new UserException(ResultCode.RESET_PASS_CODE_EXPIRED);
+        }
+        String cachedCode = (String) redisUtil.get(redisKey);
+        if (!cachedCode.equals(req.getCode())) {
+            throw new UserException(ResultCode.RESET_PASS_CODE_ERROR);
+        }
+
+        // 2. 查找用户
+        UserEntity user = this.getOne(new LambdaQueryWrapper<UserEntity>().eq(UserEntity::getEmail, req.getEmail()));
+        if (user == null) {
+            throw new UserException(ResultCode.USER_NOT_FOUND);
+        }
+
+        // 3. 更新密码 (记得加密)
+        user.setPassword(BCryptUtil.encode(req.getNewPassword()));
+        this.updateById(user);
+
+        // 4. 删除验证码
+        redisUtil.del(redisKey);
     }
 }

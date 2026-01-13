@@ -51,6 +51,9 @@ public enum ResultCode {
     USER_ALREADY_EXISTS(6022, "用户名已存在，请勿重复注册"),
     Register_FAILED(6023, "注册失败"),
     PASSWORD_NOT_MATCH(6024, "两次输入的密码不一致"),
+    MAIL_SEND_ERROR(6025, "邮件发送失败"),
+    RESET_PASS_CODE_EXPIRED(6026, "验证码已过期，请重新获取"),
+    RESET_PASS_CODE_ERROR(6027, "验证码错误"),
 
     /* ===================== 程序缺陷类（9xxx） ===================== */
     NULL_POINTER(9001, "空指针异常"),

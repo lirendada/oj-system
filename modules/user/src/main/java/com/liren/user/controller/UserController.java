@@ -5,6 +5,8 @@ import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
 import com.liren.user.dto.UserLoginDTO;
 import com.liren.user.dto.UserRegisterDTO;
+import com.liren.user.dto.UserResetPassDTO;
+import com.liren.user.dto.UserSendCodeDTO;
 import com.liren.user.service.IUserService;
 import com.liren.user.vo.UserLoginVO;
 import com.liren.user.vo.UserVO;
@@ -73,5 +75,19 @@ public class UserController {
         }
         Long userId = userService.register(userRegisterDTO);
         return Result.success(userId);
+    }
+
+    @PostMapping("/forget/send-code")
+    @Operation(summary = "发送忘记密码验证码")
+    public Result<Void> sendForgetCode(@Valid @RequestBody UserSendCodeDTO req) {
+        userService.sendForgetPasswordCode(req.getEmail());
+        return Result.success();
+    }
+
+    @PostMapping("/forget/reset")
+    @Operation(summary = "重置密码")
+    public Result<Void> resetPassword(@Valid @RequestBody UserResetPassDTO req) {
+        userService.resetPassword(req);
+        return Result.success();
     }
 }
