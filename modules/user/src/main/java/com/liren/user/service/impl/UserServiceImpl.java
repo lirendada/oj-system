@@ -49,16 +49,26 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     @Autowired
     private RedisUtil redisUtil; // 假设 common-redis 中有这个工具类
 
-    //TODO：redis优化
     @Override
     public UserLoginVO login(UserLoginDTO userLoginDTO) {
-        // 1. 判断用户是否存在
-        LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<>();
-        UserEntity user = userMapper.selectOne(
-                wrapper.eq(UserEntity::getUserAccount, userLoginDTO.getUserAccount())
-        );
-        if(user == null) {
-            throw new UserException(ResultCode.USER_NOT_FOUND);
+        String userAccount = userLoginDTO.getUserAccount();
+        String cacheKey = Constants.USER_LOGIN_CACHE_PREFIX + userAccount;
+
+        // 1. 先从 Redis 缓存中查询用户信息
+        UserEntity user = redisUtil.get(cacheKey, UserEntity.class);
+
+        if (user == null) {
+            // 2. 缓存未命中，查询数据库
+            LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<>();
+            user = userMapper.selectOne(
+                    wrapper.eq(UserEntity::getUserAccount, userAccount)
+            );
+            if (user == null) {
+                throw new UserException(ResultCode.USER_NOT_FOUND);
+            }
+
+            // 3. 将用户信息写入缓存（30分钟过期）
+            redisUtil.set(cacheKey, user, Constants.USER_LOGIN_CACHE_EXPIRE_TIME);
         }
 
         // 2. 判断用户是否状态正常
@@ -257,6 +267,10 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
         // 4. 删除验证码
         redisUtil.del(redisKey);
+
+        // 5. 清除用户登录缓存（密码已修改，需要重新登录）
+        String cacheKey = Constants.USER_LOGIN_CACHE_PREFIX + user.getUserAccount();
+        redisUtil.del(cacheKey);
     }
 
 
@@ -286,6 +300,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         }
 
         // 3. 执行更新
-        return this.updateById(updateUser);
+        boolean result = this.updateById(updateUser);
+
+        // 4. 清除用户缓存（如果缓存存在）
+        if (result) {
+            UserEntity user = this.getById(userId);
+            if (user != null) {
+                String cacheKey = Constants.USER_LOGIN_CACHE_PREFIX + user.getUserAccount();
+                redisUtil.del(cacheKey);
+            }
+        }
+
+        return result;
     }
 }

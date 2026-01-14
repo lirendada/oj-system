@@ -19,6 +19,7 @@ import com.liren.common.core.enums.ProblemStatusEnum;
 import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
 import com.liren.common.redis.RankingManager;
+import com.liren.common.redis.RedisUtil;
 import com.liren.problem.dto.ProblemAddDTO;
 import com.liren.problem.dto.ProblemQueryRequest;
 import com.liren.problem.dto.ProblemSubmitDTO;
@@ -67,6 +68,9 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
     @Autowired
     private UserInterface userInterface;
 
+    @Autowired
+    private RedisUtil redisUtil;
+
     /**
      * 新增题目
      */
@@ -78,7 +82,7 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         LambdaQueryWrapper<ProblemEntity> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(ProblemEntity::getTitle, problemAddDTO.getTitle());
 
-        // 如果是更新操作，需要排除掉“自己”，否则自己改自己会报错
+        // 如果是更新操作，需要排除掉"自己"，否则自己改自己会报错
         if (problemAddDTO.getProblemId() != null) {
             queryWrapper.ne(ProblemEntity::getProblemId, problemAddDTO.getProblemId());
         }
@@ -129,6 +133,12 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
             }).collect(Collectors.toList());
 
             testCaseMapper.saveBatch(testCaseEntities);
+        }
+
+        // 5. 如果是更新操作，清除缓存
+        if (problemAddDTO.getProblemId() != null) {
+            String cacheKey = Constants.PROBLEM_DETAIL_CACHE_PREFIX + problemAddDTO.getProblemId();
+            redisUtil.del(cacheKey);
         }
 
         return true;
@@ -297,13 +307,22 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
      */
     @Override
     public ProblemDetailVO getProblemDetail(Long problemId) {
-        // 1. 先查出题目
+        String cacheKey = Constants.PROBLEM_DETAIL_CACHE_PREFIX + problemId;
+
+        // 1. 先从 Redis 缓存中查询题目详情
+        ProblemDetailVO cachedDetail = redisUtil.get(cacheKey, ProblemDetailVO.class);
+        if (cachedDetail != null) {
+            // 缓存命中，直接返回
+            return cachedDetail;
+        }
+
+        // 2. 缓存未命中，查询数据库
         ProblemEntity problemEntity = this.getById(problemId);
         if(problemEntity == null) {
             throw new ProblemException(ResultCode.SUBJECT_NOT_FOUND);
         }
 
-        // 2. 权限校验
+        // 3. 权限校验
         // 逻辑修正：
         // 如果题目状态是 NORMAL (公开)，则允许直接访问，无需校验竞赛时间。
         // 如果题目状态是 HIDDEN (隐藏/竞赛专用)，则必须校验管理员权限或竞赛权限。
@@ -335,17 +354,17 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
             }
         }
 
-        // 3. 转换 Bean (Entity -> DetailVO)
+        // 4. 转换 Bean (Entity -> DetailVO)
         ProblemDetailVO detailVO = new ProblemDetailVO();
         BeanUtil.copyProperties(problemEntity, detailVO);
 
-        // 4. 填充标签 (单个题目，查一次关联表即可)
-        // 4.1 查关联关系
+        // 5. 填充标签 (单个题目，查一次关联表即可)
+        // 5.1 查关联关系
         LambdaQueryWrapper<ProblemTagRelationEntity> relationWrapper = new LambdaQueryWrapper<>();
         relationWrapper.eq(ProblemTagRelationEntity::getProblemId, problemId);
         List<ProblemTagRelationEntity> relations = problemTagRelationMapper.selectList(relationWrapper);
 
-        // 4.2 如果有标签，查详情
+        // 5.2 如果有标签，查详情
         if(CollectionUtil.isNotEmpty(relations)) {
             List<Long> tagIds = relations.stream().map(ProblemTagRelationEntity::getTagId).collect(Collectors.toList());
 
@@ -354,6 +373,9 @@ public class ProblemServiceImpl extends ServiceImpl<ProblemMapper, ProblemEntity
         } else {
             detailVO.setTags(Collections.emptyList());
         }
+
+        // 6. 写入缓存（2小时过期）
+        redisUtil.set(cacheKey, detailVO, Constants.PROBLEM_DETAIL_CACHE_EXPIRE_TIME);
 
         return detailVO;
     }

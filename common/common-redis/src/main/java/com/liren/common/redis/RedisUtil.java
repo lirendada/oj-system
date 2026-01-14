@@ -1,5 +1,6 @@
 package com.liren.common.redis;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,9 @@ public class RedisUtil {
 
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     //************************ 操作key ***************************
 
@@ -135,16 +139,34 @@ public class RedisUtil {
 
     /**
      * 获取指定类型的基本对象
+     * 支持自动从 Map 转换为目标类型
      */
     public <T> T get(String key, Class<T> clazz) {
         Object value = redisTemplate.opsForValue().get(key);
         if (value == null) {
             return null;
         }
-        // 需要确保类型一致，否则抛出异常
+
+        // 如果类型完全匹配，直接返回
         if (clazz.isInstance(value)) {
             return clazz.cast(value);
         }
+
+        // 如果是 Map 类型，尝试转换为目标对象
+        if (value instanceof Map) {
+            try {
+                return objectMapper.convertValue(value, clazz);
+            } catch (Exception e) {
+                throw new IllegalStateException(
+                        "Redis Map 转 JSON 失败. key=" + key +
+                                ", 期望类型=" + clazz.getName() +
+                                ", 实际类型=" + value.getClass().getName(),
+                        e
+                );
+            }
+        }
+
+        // 类型不匹配且无法转换
         throw new IllegalStateException(
                 "Redis value 类型不匹配. key=" + key +
                         ", 期望类型=" + clazz.getName() +

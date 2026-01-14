@@ -16,6 +16,7 @@ import com.liren.common.core.enums.ContestStatusEnum;
 import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
 import com.liren.common.redis.RankingManager;
+import com.liren.common.redis.RedisUtil;
 import com.liren.contest.dto.ContestAddDTO;
 import com.liren.contest.dto.ContestProblemAddDTO;
 import com.liren.contest.dto.ContestQueryRequest;
@@ -63,6 +64,9 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
     @Autowired
     private UserInterface userInterface;
 
+    @Autowired
+    private RedisUtil redisUtil;
+
     /**
      * 新增或修改竞赛信息
      */
@@ -78,7 +82,15 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         BeanUtil.copyProperties(contestAddDTO, contest);
         contest.setStatus(ContestStatusEnum.NOT_STARTED.getCode());
 
-        return this.saveOrUpdate(contest);
+        boolean result = this.saveOrUpdate(contest);
+
+        // 3. 如果是更新操作，清除缓存
+        if (result && contest.getContestId() != null) {
+            String cacheKey = Constants.CONTEST_DETAIL_CACHE_PREFIX + contest.getContestId();
+            redisUtil.del(cacheKey);
+        }
+
+        return result;
     }
 
     /**
@@ -172,11 +184,28 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
      */
     @Override
     public ContestVO getContestVO(Long contestId) {
+        String cacheKey = Constants.CONTEST_DETAIL_CACHE_PREFIX + contestId;
+
+        // 1. 先从 Redis 缓存中查询竞赛详情
+        ContestVO cachedContest = redisUtil.get(cacheKey, ContestVO.class);
+        if (cachedContest != null) {
+            // 缓存命中，直接返回
+            return cachedContest;
+        }
+
+        // 2. 缓存未命中，查询数据库
         ContestEntity contestEntity = this.getById(contestId);
         if(contestEntity == null) {
             throw new ContestException(ResultCode.CONTEST_NOT_FOUND);
         }
-        return this.convertContestEntity2ContestVO(contestEntity);
+
+        // 3. 转换为 VO
+        ContestVO contestVO = this.convertContestEntity2ContestVO(contestEntity);
+
+        // 4. 写入缓存（30分钟过期）
+        redisUtil.set(cacheKey, contestVO, Constants.CONTEST_DETAIL_CACHE_EXPIRE_TIME);
+
+        return contestVO;
     }
 
     /**
@@ -321,6 +350,13 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         registration.setContestId(contestId);
         registration.setUserId(userId);
         int insert = contestRegistrationMapper.insert(registration);
+
+        // 5. 更新缓存（报名成功后缓存为 true）
+        if (insert == 1) {
+            String cacheKey = Constants.CONTEST_REGISTRATION_CACHE_PREFIX + contestId + ":" + userId;
+            redisUtil.set(cacheKey, true, Constants.CONTEST_REGISTRATION_CACHE_EXPIRE_TIME);
+        }
+
         return insert == 1;
     }
 
@@ -506,18 +542,29 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
      * 判断用户是否已报名
      */
     private boolean isUserRegistered(Long contestId, Long userId) {
-        // TODO：建议加个缓存，不要每次都查库
         if (userId == null) {
             return false;
         }
+
+        // 1. 先从缓存中查询报名状态
+        String cacheKey = Constants.CONTEST_REGISTRATION_CACHE_PREFIX + contestId + ":" + userId;
+        Object cached = redisUtil.get(cacheKey);
+        if (cached != null) {
+            // 缓存命中
+            return Boolean.parseBoolean(cached.toString());
+        }
+
+        // 2. 缓存未命中，查询数据库
         LambdaQueryWrapper<ContestRegistrationEntity> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ContestRegistrationEntity::getUserId, userId)
                 .eq(ContestRegistrationEntity::getContestId, contestId);
         ContestRegistrationEntity registration = contestRegistrationMapper.selectOne(wrapper);
-        if(registration == null) {
-            return false;
-        }
-        return true;
+        boolean isRegistered = registration != null;
+
+        // 3. 写入缓存（1小时过期）
+        redisUtil.set(cacheKey, isRegistered, Constants.CONTEST_REGISTRATION_CACHE_EXPIRE_TIME);
+
+        return isRegistered;
     }
 
     /**

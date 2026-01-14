@@ -72,6 +72,67 @@ public class Constants {
     public static final Integer RANK_TOTAL_SIZE = 10; // 排行榜大小
 
 
+    // ========= 用户缓存 =========
+    /**
+     * 用户登录缓存 Key 前缀
+     * 完整 Key: user:login:{userAccount}
+     * 缓存内容: UserEntity 对象
+     * 过期时间: 30 分钟
+     */
+    public static final String USER_LOGIN_CACHE_PREFIX = "user:login:";
+
+    /**
+     * 用户登录缓存过期时间（秒）
+     * 30 分钟 = 1800 秒
+     */
+    public static final Long USER_LOGIN_CACHE_EXPIRE_TIME = 1800L;
+
+
+    // ========= 题目缓存 =========
+    /**
+     * 题目详情缓存 Key 前缀
+     * 完整 Key: problem:detail:{problemId}
+     * 缓存内容: ProblemDetailVO 对象
+     * 过期时间: 2 小时
+     */
+    public static final String PROBLEM_DETAIL_CACHE_PREFIX = "problem:detail:";
+
+    /**
+     * 题目详情缓存过期时间（秒）
+     * 2 小时 = 7200 秒
+     */
+    public static final Long PROBLEM_DETAIL_CACHE_EXPIRE_TIME = 7200L;
+
+
+    // ========= 竞赛缓存 =========
+    /**
+     * 竞赛详情缓存 Key 前缀
+     * 完整 Key: contest:detail:{contestId}
+     * 缓存内容: ContestVO 对象
+     * 过期时间: 30 分钟
+     */
+    public static final String CONTEST_DETAIL_CACHE_PREFIX = "contest:detail:";
+
+    /**
+     * 竞赛详情缓存过期时间（秒）
+     * 30 分钟 = 1800 秒
+     */
+    public static final Long CONTEST_DETAIL_CACHE_EXPIRE_TIME = 1800L;
+
+    /**
+     * 竞赛报名状态缓存 Key 前缀
+     * 完整 Key: contest:registration:{contestId}:{userId}
+     * 缓存内容: Boolean（是否已报名）
+     * 过期时间: 1 小时
+     */
+    public static final String CONTEST_REGISTRATION_CACHE_PREFIX = "contest:registration:";
+
+    /**
+     * 竞赛报名状态缓存过期时间（秒）
+     * 1 小时 = 3600 秒
+     */
+    public static final Long CONTEST_REGISTRATION_CACHE_EXPIRE_TIME = 3600L;
+
     // ========= 其他 =========
     public static final String FORGET_PASS_CODE_PREFIX = "user:forget:code:"; // 忘记密码验证码前缀
 }
