@@ -109,33 +109,16 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
             queryWrapper.like("title", queryRequest.getKeyword());
         }
 
-        // 2. 状态筛选 (完全基于时间)
-        // 0-未开始: start_time > now
-        // 1-进行中: start_time <= now <= end_time
-        // 2-已结束: end_time < now
-        LocalDateTime now = LocalDateTime.now();
+        // 2. 状态筛选 (优化：基于状态)
         if (queryRequest.getStatus() != null) {
-            Integer status = queryRequest.getStatus();
-            if (ContestStatusEnum.NOT_STARTED.getCode().equals(status)) {
-                queryWrapper.gt("start_time", now);
-            } else if (ContestStatusEnum.RUNNING.getCode().equals(status)) {
-                queryWrapper.le("start_time", now).ge("end_time", now);
-            } else if (ContestStatusEnum.ENDED.getCode().equals(status)) {
-                queryWrapper.lt("end_time", now);
-            }
+            queryWrapper.eq("status", queryRequest.getStatus());
         }
 
-        // 3. 自定义排序：进行中置顶
-        // 格式化时间用于 SQL 拼接
-        String nowStr = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-
-        // SQL逻辑：如果是进行中(startTime <= now <= endTime)，排序权重为0(最前)；否则为1。
-        // 同权重下，按开始时间倒序(新比赛在前)。
-        String orderBySql = String.format(
-                "ORDER BY CASE WHEN '%s' >= start_time AND '%s' <= end_time THEN 0 ELSE 1 END ASC, start_time DESC",
-                nowStr, nowStr
-        );
-        queryWrapper.last(orderBySql);
+        // 3. 自定义排序 (改动点：基于 status 排序)
+        // 逻辑：进行中(1)排最前 -> 未开始(0) -> 已结束(2)
+        // SQL: ORDER BY (status = 1) DESC, start_time DESC
+        // 说明：(status = 1) 在 MySQL 中为 True(1) 或 False(0)，DESC 会把 1 排在前面
+        queryWrapper.last("ORDER BY (status = " + ContestStatusEnum.RUNNING.getCode() + ") DESC, start_time DESC");
 
         // 4. 分页查询
         Page<ContestEntity> page = this.page(new Page<>(queryRequest.getCurrent(), queryRequest.getPageSize()), queryWrapper);
@@ -574,28 +557,22 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         ContestVO contestVO = new ContestVO();
         BeanUtil.copyProperties(entity, contestVO);
 
-        LocalDateTime startTime = entity.getStartTime();
-        LocalDateTime endTime = entity.getEndTime();
-        LocalDateTime now = LocalDateTime.now();
+        // 1. 直接获取 DB 状态 (依赖 XXL-JOB 更新)
+        Integer status = entity.getStatus();
+        contestVO.setStatus(status);
 
-        // 动态设置状态
-        // 0-未开始: startTime > now
-        // 1-进行中: startTime <= now && endTime >= now
-        // 2-已结束: endTime < now
-        if (startTime.isAfter(now)) {
-            contestVO.setStatus(ContestStatusEnum.NOT_STARTED.getCode());
+        // 2. 设置状态描述
+        if (ContestStatusEnum.NOT_STARTED.getCode().equals(status)) {
             contestVO.setStatusDesc(ContestStatusEnum.NOT_STARTED.getMessage());
-        } else if (startTime.isBefore(now) && endTime.isAfter(now)) {
-            contestVO.setStatus(ContestStatusEnum.RUNNING.getCode());
+        } else if (ContestStatusEnum.RUNNING.getCode().equals(status)) {
             contestVO.setStatusDesc(ContestStatusEnum.RUNNING.getMessage());
         } else {
-            contestVO.setStatus(ContestStatusEnum.ENDED.getCode());
             contestVO.setStatusDesc(ContestStatusEnum.ENDED.getMessage());
         }
 
-        // 计算持续时间文本 (例如: 2小时30分)
-        if (startTime != null && endTime != null) {
-            Duration duration = Duration.between(startTime, endTime);
+        // 3. 计算持续时间
+        if (entity.getStartTime() != null && entity.getEndTime() != null) {
+            Duration duration = Duration.between(entity.getStartTime(), entity.getEndTime());
             long hours = duration.toHours();
             long minutes = duration.toMinutes() % 60;
             contestVO.setDuration(String.format("%d小时%d分", hours, minutes));
