@@ -48,7 +48,9 @@ spring:
           '[/**]':
             allowedOrigins:
               - "http://localhost"
+              - "http://localhost:3000"
               - "http://127.0.0.1"
+              - "http://127.0.0.1:3000"
               - "http://49.235.136.223"
               - "http://lirendada.art"
             allowedMethods:
@@ -59,3 +61,20 @@ spring:
               - OPTIONS
             allowedHeaders: "*"
             allowCredentials: true
+
+gateway:
+  auth:
+    whitelist:
+      - /user/login
+      - /user/register
+      - /user/forget/send-code
+      - /user/forget/reset
+      - /system/user/login
+      - /problem/list/page
+      - /problem/rank/**
+      - /contest/list
+      - /contest/rank/{contestId}
+      - /favicon.ico
+      - /webjars/**
+      - /v3/api-docs/**
+      - /swagger-resources/**

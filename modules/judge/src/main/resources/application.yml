@@ -4,12 +4,16 @@ server:
 spring:
   application:
     name: judge-service
-
   profiles:
     active: dev
-
+  config:
+    import:
+      - optional:nacos:common.yaml
+      - optional:nacos:jwt.yaml
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.yaml
   cloud:
     nacos:
+      server-addr: lirendada.art:8848
       discovery:
         server-addr: lirendada.art:8848
         namespace: ceaffba5-fad9-4149-a71a-f77956f10897
@@ -17,13 +21,9 @@ spring:
         server-addr: lirendada.art:8848
         namespace: ceaffba5-fad9-4149-a71a-f77956f10897
         file-extension: yaml
-        shared-configs:
-          - data-id: common.yaml
-            refresh: true
-          - data-id: jwt.yaml
-            refresh: true
 
+# 判题沙箱配置 (保留原有的)
 oj:
   judge:
     docker:
-      host: tcp://49.235.136.223:2375  # 换成你 Ubuntu 的真实IP
+      host: tcp://49.235.136.223:2375

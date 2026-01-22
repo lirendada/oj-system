@@ -1,13 +1,19 @@
 server:
-  port: 8001
+  port: 8006
 
 spring:
   application:
-    name: job-service
+    name: problem-service
   profiles:
     active: dev
+  config:
+    import:
+      - optional:nacos:common.yaml
+      - optional:nacos:jwt.yaml
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.yaml
   cloud:
     nacos:
+      server-addr: lirendada.art:8848
       discovery:
         server-addr: lirendada.art:8848
         namespace: ceaffba5-fad9-4149-a71a-f77956f10897
@@ -15,8 +21,3 @@ spring:
         server-addr: lirendada.art:8848
         namespace: ceaffba5-fad9-4149-a71a-f77956f10897
         file-extension: yaml
-        shared-configs:
-          - data-id: common.yaml
-            refresh: true
-          - data-id: jwt.yaml
-            refresh: true

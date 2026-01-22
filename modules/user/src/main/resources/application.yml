@@ -4,12 +4,18 @@ server:
 spring:
   application:
     name: user-service
-
   profiles:
     active: dev
-
+  # === 核心修改：使用 config.import 替代 bootstrap ===
+  config:
+    import:
+      - optional:nacos:common.yaml
+      - optional:nacos:jwt.yaml
+      - optional:nacos:${spring.application.name}-${spring.profiles.active}.yaml
   cloud:
     nacos:
+      # Nacos 服务器地址
+      server-addr: lirendada.art:8848
       discovery:
         server-addr: lirendada.art:8848
         namespace: ceaffba5-fad9-4149-a71a-f77956f10897
@@ -17,8 +23,3 @@ spring:
         server-addr: lirendada.art:8848
         namespace: ceaffba5-fad9-4149-a71a-f77956f10897
         file-extension: yaml
-        shared-configs:
-          - data-id: common.yaml
-            refresh: true
-          - data-id: jwt.yaml
-            refresh: true

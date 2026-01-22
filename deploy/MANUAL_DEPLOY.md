@@ -7,6 +7,31 @@
 
 ---
 
+**配置镜像：**
+```
+sudo vim /etc/docker/daemon.json
+添加以下内容：
+{
+  "registry-mirrors": [
+    "https://mirror.ccs.tencentyun.com",
+    "https://docker.m.daocloud.io",
+    "https://dockerproxy.com"
+  ]
+}
+```
+
+```
+# 1. 编辑配置
+vim /lib/systemd/system/docker.service
+
+# 2. 修改 ExecStart 行 (添加 -H tcp://0.0.0.0:2375)
+# ExecStart=/usr/bin/dockerd -H fd:// -H tcp://0.0.0.0:2375 --containerd=/run/containerd/containerd.sock
+
+# 3. 重启 Docker
+systemctl daemon-reload
+systemctl restart docker
+```
+
 ## 步骤 1: 创建 Docker 网络
 
 ```bash
@@ -119,49 +144,19 @@ docker run -d \
   -p 9848:9848 \
   -e MODE=standalone \
   -e SPRING_DATASOURCE_PLATFORM=mysql \
-  -e MYSQL_SERVICE_HOST=mysql \
-  -e MYSQL_SERVICE_PORT=3306 \
-  -e MYSQL_SERVICE_DB_NAME=nacos_config \
-  -e MYSQL_SERVICE_USER=root \
-  -e MYSQL_SERVICE_PASSWORD=123123 \
-  -e MYSQL_SERVICE_DB_PARAM="characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true" \
-  -e JVM_XMS=256m \
-  -e JVM_XMX=512m \
-  -e NACOS_AUTH_ENABLE=true \
-  -e NACOS_AUTH_TOKEN=SecretKey012345678901234567890123456789012345678901234567890123456789 \
-  -e NACOS_AUTH_IDENTITY_KEY=root \
-  -e NACOS_AUTH_IDENTITY_VALUE=123123 \
-  -v nacos-logs:/home/nacos/logs \
-  nacos/nacos-server:v2.2.3
-```
-
-**注意**：上面的 `-e MYSQL_SERVICE_HOST=mysql` 需要改为 `oj-mysql`，因为我们的容器名是 `oj-mysql`：
-
-**修正后的 Nacos 命令**：
-
-```bash
-docker run -d \
-  --name oj-nacos \
-  --network oj-network \
-  -p 8848:8848 \
-  -p 9848:9848 \
-  -e MODE=standalone \
-  -e SPRING_DATASOURCE_PLATFORM=mysql \
   -e MYSQL_SERVICE_HOST=oj-mysql \
   -e MYSQL_SERVICE_PORT=3306 \
   -e MYSQL_SERVICE_DB_NAME=nacos_config \
   -e MYSQL_SERVICE_USER=root \
   -e MYSQL_SERVICE_PASSWORD=123123 \
-  -e MYSQL_SERVICE_DB_PARAM="characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true" \
+  -e MYSQL_SERVICE_DB_PARAM="characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai" \
   -e JVM_XMS=256m \
   -e JVM_XMX=512m \
-  -e NACOS_AUTH_ENABLE=true \
-  -e NACOS_AUTH_TOKEN=SecretKey012345678901234567890123456789012345678901234567890123456789 \
-  -e NACOS_AUTH_IDENTITY_KEY=root \
-  -e NACOS_AUTH_IDENTITY_VALUE=123123 \
+  -e NACOS_AUTH_ENABLE=false \
   -v nacos-logs:/home/nacos/logs \
   nacos/nacos-server:v2.2.3
 ```
+
 
 等待 Nacos 启动（约 60 秒）
 
@@ -243,70 +238,3 @@ docker volume ls
 docker volume rm mysql-data redis-data rabbitmq-data nacos-logs
 ```
 
----
-
-## 本地 IDEA 配置
-
-### 1. 修改所有服务的 bootstrap.yml
-
-将所有服务的 Nacos 地址改为服务器 IP：
-
-```yaml
-spring:
-  cloud:
-    nacos:
-      server-addr: YOUR_SERVER_IP:8848
-```
-
-### 2. 在 Nacos 中创建配置
-
-访问: http://YOUR_SERVER_IP:8848/nacos
-登录: root / 123123
-
-创建命名空间，然后导入 `common.yaml`：
-
-```yaml
-spring:
-  datasource:
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://YOUR_SERVER_IP:3306/oj_system?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: root
-    password: 123123
-  data:
-    redis:
-      host: YOUR_SERVER_IP
-      port: 6379
-      password: 123123
-  rabbitmq:
-    host: YOUR_SERVER_IP
-    port: 5672
-    username: root
-    password: 123123
-```
-
-### 3. 在 IDEA 中启动服务
-
-依次启动：
-1. Gateway
-2. User Service
-3. Problem Service
-4. Judge Service
-5. Contest Service
-6. System Service
-7. Job Service
-
----
-
-## 防火墙配置
-
-```bash
-# 开放端口
-sudo ufw allow 3306/tcp  # MySQL
-sudo ufw allow 6379/tcp  # Redis
-sudo ufw allow 5672/tcp  # RabbitMQ
-sudo ufw allow 15672/tcp # RabbitMQ 管理
-sudo ufw allow 8848/tcp  # Nacos
-
-# 查看状态
-sudo ufw status
-```

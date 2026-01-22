@@ -91,7 +91,8 @@ public class DockerCodeSandbox implements CodeSandbox {
                     .withAttachStdin(true)
                     .withAttachStderr(true)
                     .withAttachStdout(true)
-                    .withTty(true); // 保持后台运行
+                    .withTty(true) // 保持后台运行
+                    .withWorkingDir("/");
 
             CreateContainerResponse createContainerResponse = containerCmd.exec();
             containerId = createContainerResponse.getId();
