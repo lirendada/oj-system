@@ -1,0 +1,60 @@
+spring:
+  # 数据源配置 (MySQL)
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    # 建议: 如果服务都跑在同一个 Docker 网络里，用容器名 'oj-mysql' 代替域名会更稳定
+    url: jdbc:mysql://ip地址/oj_system?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: 账号
+    password: 密码
+
+  # Redis 配置 (注意这里去掉了 'data' 层级)
+  redis:
+    host: lirendada.art
+    port: 6379
+    database: 0
+    password: 密码
+    timeout: 5000ms
+    lettuce:
+      pool:
+        max-active: 8
+        max-wait: -1ms
+        max-idle: 8
+        min-idle: 0
+
+  # RabbitMQ 配置
+  rabbitmq:
+    host: lirendada.art
+    port: 5672
+    username: 账号
+    password: 密码
+    virtual-host: oj-system
+    listener:
+      simple:
+        acknowledge-mode: manual
+        prefetch: 1
+
+  mail:
+    host: smtp.qq.com
+    port: 587
+    username: 邮箱@qq.com
+    password: 授权码
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
+# MyBatis Plus 配置
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 开发环境可以打开下面这行看 SQL 日志
+    # log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0

@@ -1,0 +1,6 @@
+# JWT 配置
+jwt:
+  # JWT 密钥
+  secret: H8#v9Xz!Qp3@K7dR2$Lt6^mW1*Yc4&Eo5%Ub0#Tf
+  # Token 过期时间（毫秒）86400000 = 24小时
+  expiration: 86400000

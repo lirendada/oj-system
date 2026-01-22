@@ -12,10 +12,10 @@ spring:
     nacos:
       discovery:
         server-addr: lirendada.art:8848
-        namespace: 3e8d6cf0-32cd-43c0-8279-9fda3da2265f
+        namespace: ceaffba5-fad9-4149-a71a-f77956f10897
       config:
         server-addr: lirendada.art:8848
-        namespace: 3e8d6cf0-32cd-43c0-8279-9fda3da2265f
+        namespace: ceaffba5-fad9-4149-a71a-f77956f10897
         file-extension: yaml
         shared-configs:
           - data-id: jwt.yaml

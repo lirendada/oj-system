@@ -1,0 +1,61 @@
+# Gateway 服务配置（开发环境）
+spring:
+  # Cloud Gateway 路由配置
+  cloud:
+    gateway:
+      # 路由配置
+      routes:
+        # 用户服务
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/user/**
+
+        # 题目服务
+        - id: problem-service
+          uri: lb://problem-service
+          predicates:
+            - Path=/problem/**
+
+        # 判题服务
+        - id: judge-service
+          uri: lb://judge-service
+          predicates:
+            - Path=/judge/**
+
+        # 竞赛服务
+        - id: contest-service
+          uri: lb://contest-service
+          predicates:
+            - Path=/contest/**
+
+        # 系统服务
+        - id: system-service
+          uri: lb://system-service
+          predicates:
+            - Path=/system/**
+
+        # 定时任务服务
+        - id: job-service
+          uri: lb://job-service
+          predicates:
+            - Path=/job/**
+
+      # 全局跨域配置
+      globalcors:
+        add-to-simple-url-handler-mapping: true
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost"
+              - "http://127.0.0.1"
+              - "http://49.235.136.223"
+              - "http://lirendada.art"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
