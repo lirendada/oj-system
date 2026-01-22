@@ -109,16 +109,30 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
             queryWrapper.like("title", queryRequest.getKeyword());
         }
 
-        // 2. 状态筛选 (优化：基于状态)
+        // 2. 状态筛选 (基于时间)
+        LocalDateTime now = LocalDateTime.now();
         if (queryRequest.getStatus() != null) {
-            queryWrapper.eq("status", queryRequest.getStatus());
+            Integer status = queryRequest.getStatus();
+            if (ContestStatusEnum.NOT_STARTED.getCode().equals(status)) {
+                // 未开始: start_time > now
+                queryWrapper.gt("start_time", now);
+            } else if (ContestStatusEnum.RUNNING.getCode().equals(status)) {
+                // 进行中: start_time <= now <= end_time
+                queryWrapper.le("start_time", now).ge("end_time", now);
+            } else if (ContestStatusEnum.ENDED.getCode().equals(status)) {
+                // 已结束: end_time < now
+                queryWrapper.lt("end_time", now);
+            }
         }
 
-        // 3. 自定义排序 (改动点：基于 status 排序)
-        // 逻辑：进行中(1)排最前 -> 未开始(0) -> 已结束(2)
-        // SQL: ORDER BY (status = 1) DESC, start_time DESC
-        // 说明：(status = 1) 在 MySQL 中为 True(1) 或 False(0)，DESC 会把 1 排在前面
-        queryWrapper.last("ORDER BY (status = " + ContestStatusEnum.RUNNING.getCode() + ") DESC, start_time DESC");
+        // 3. 自定义排序 (基于时间)
+        // 目的：让正在进行的比赛排在最前面
+        String nowStr = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String orderBySql = String.format(
+                "ORDER BY CASE WHEN '%s' >= start_time AND '%s' <= end_time THEN 0 ELSE 1 END ASC, start_time DESC",
+                nowStr, nowStr
+        );
+        queryWrapper.last(orderBySql);
 
         // 4. 分页查询
         Page<ContestEntity> page = this.page(new Page<>(queryRequest.getCurrent(), queryRequest.getPageSize()), queryWrapper);
@@ -169,26 +183,32 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
     public ContestVO getContestVO(Long contestId) {
         String cacheKey = Constants.CONTEST_DETAIL_CACHE_PREFIX + contestId;
 
-        // 1. 先从 Redis 缓存中查询竞赛详情
-        ContestVO cachedContest = redisUtil.get(cacheKey, ContestVO.class);
-        if (cachedContest != null) {
-            // 缓存命中，直接返回
-            return cachedContest;
+        // 1. 尝试从 Redis 获取 Entity (注意：是 Entity，不是 VO)
+        ContestEntity contestEntity = redisUtil.get(cacheKey, ContestEntity.class);
+
+        // 2. 如果缓存没命中，查 DB 并写入缓存
+        if (contestEntity == null) {
+            contestEntity = this.getById(contestId);
+            if (contestEntity == null) {
+                throw new ContestException(ResultCode.CONTEST_NOT_FOUND);
+            }
+            // 缓存 Entity，它是静态的，只要管理员不改比赛信息，它就不会变
+            redisUtil.set(cacheKey, contestEntity, Constants.CONTEST_DETAIL_CACHE_EXPIRE_TIME);
         }
 
-        // 2. 缓存未命中，查询数据库
-        ContestEntity contestEntity = this.getById(contestId);
-        if(contestEntity == null) {
-            throw new ContestException(ResultCode.CONTEST_NOT_FOUND);
+        // 3. 【核心修复】无论数据来自 Redis 还是 DB，都在这里现场计算状态
+        // 这样就能保证 status 永远是基于 LocalDateTime.now() 的最新值
+        ContestVO vo = this.convertContestEntity2ContestVO(contestEntity);
+
+        // 补充：检查当前用户是否已报名
+        Long userId = UserContext.getUserId();
+        if (userId != null) {
+            vo.setRegistered(this.isUserRegistered(contestId, userId));
+        } else {
+            vo.setRegistered(false);
         }
 
-        // 3. 转换为 VO
-        ContestVO contestVO = this.convertContestEntity2ContestVO(contestEntity);
-
-        // 4. 写入缓存（30分钟过期）
-        redisUtil.set(cacheKey, contestVO, Constants.CONTEST_DETAIL_CACHE_EXPIRE_TIME);
-
-        return contestVO;
+        return vo;
     }
 
     /**
@@ -557,16 +577,19 @@ public class ContestServiceImpl extends ServiceImpl<ContestMapper, ContestEntity
         ContestVO contestVO = new ContestVO();
         BeanUtil.copyProperties(entity, contestVO);
 
-        // 1. 直接获取 DB 状态 (依赖 XXL-JOB 更新)
-        Integer status = entity.getStatus();
-        contestVO.setStatus(status);
-
         // 2. 设置状态描述
-        if (ContestStatusEnum.NOT_STARTED.getCode().equals(status)) {
+        // ✅ 必须基于时间重新计算，确保和 list 筛选逻辑一致
+        LocalDateTime startTime = entity.getStartTime();
+        LocalDateTime endTime = entity.getEndTime();
+        LocalDateTime now = LocalDateTime.now();
+        if (startTime.isAfter(now)) {
+            contestVO.setStatus(ContestStatusEnum.NOT_STARTED.getCode());
             contestVO.setStatusDesc(ContestStatusEnum.NOT_STARTED.getMessage());
-        } else if (ContestStatusEnum.RUNNING.getCode().equals(status)) {
+        } else if (startTime.isBefore(now) && endTime.isAfter(now)) {
+            contestVO.setStatus(ContestStatusEnum.RUNNING.getCode());
             contestVO.setStatusDesc(ContestStatusEnum.RUNNING.getMessage());
         } else {
+            contestVO.setStatus(ContestStatusEnum.ENDED.getCode());
             contestVO.setStatusDesc(ContestStatusEnum.ENDED.getMessage());
         }
 
