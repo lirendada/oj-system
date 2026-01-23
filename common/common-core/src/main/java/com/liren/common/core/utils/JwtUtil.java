@@ -39,19 +39,20 @@ public class JwtUtil {
     /**
      * 生成 Token
      */
-    public String createToken(Long userId) {
-        // 需要改为实例方法
-        return createToken(userId, null);
-    }
+//    public String createToken(Long userId) {
+//        // 需要改为实例方法
+//        return createToken(userId, null);
+//    }
 
     /**
      * 生成带额外信息的 Token (例如昵称、角色等)
      */
-    public String createToken(Long userId, Map<String, Object> claims) {
+    public String createToken(Long userId, Long passwordVersion, Map<String, Object> claims) {
         if (claims == null) {
             claims = new HashMap<>();
         }
         claims.put("userId", userId);
+        claims.put("passwordVersion", passwordVersion);
 
         return Jwts.builder()
                 .setClaims(claims)
@@ -114,6 +115,28 @@ public class JwtUtil {
         Object roleObj = claims.get("userRole");
         return roleObj != null ? roleObj.toString() : null;
     }
+    /**
+     * 【新增】解析 Token 获取密码版本号
+     * 用于校验 token 是否在重置密码后失效
+     */
+    public Long getPasswordVersion(String token) {
+        Claims claims = parseToken(token);
+        if (claims == null) {
+            return null;
+        }
+        Object versionObj = claims.get("passwordVersion");
+        if (versionObj == null) {
+            // 兼容旧 token：没有 passwordVersion 字段，视为版本 0
+            return 0L;
+        }
+        try {
+            return Long.valueOf(versionObj.toString());
+        } catch (NumberFormatException e) {
+            log.warn("解析 passwordVersion 失败: {}", versionObj);
+            return null;
+        }
+    }
+
 
     /**
      * 校验 Token 是否有效

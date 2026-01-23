@@ -2,6 +2,7 @@ package com.liren.user.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
+import com.liren.api.problem.dto.user.UserPasswordVersionDTO;
 import com.liren.common.core.result.Result;
 import com.liren.user.dto.UserLoginDTO;
 import com.liren.user.dto.UserRegisterDTO;
@@ -51,4 +52,9 @@ public interface IUserService extends IService<UserEntity> {
      * 更新当前登录用户信息
      */
     boolean updateMyInfo(UserUpdateMyDTO userUpdateMyDTO);
+
+    /**
+     * 获取用户密码版本号
+     */
+    UserPasswordVersionDTO getPasswordVersion(Long userId);
 }

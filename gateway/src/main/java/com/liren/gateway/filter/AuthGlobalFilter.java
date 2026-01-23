@@ -2,14 +2,19 @@ package com.liren.gateway.filter;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.liren.api.problem.api.user.UserInterface;
+import com.liren.api.problem.dto.user.UserPasswordVersionDTO;
+import com.liren.common.core.constant.Constants;
 import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
 import com.liren.common.core.utils.JwtUtil;
+import com.liren.common.redis.RedisUtil;
 import com.liren.gateway.properties.AuthWhiteList;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
@@ -34,6 +39,13 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private RedisUtil redisUtil;
+
+    @Autowired
+    @Lazy
+    private UserInterface userInterface;
+
     private final AntPathMatcher antPathMatcher = new AntPathMatcher();
 
     // 白名单接口 (无需登录即可访问)
@@ -44,52 +56,116 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         String path = request.getURI().getPath();
-        log.info("AuthGlobalFilter: Request path={}", path);
+        log.info("AuthGlobalFilter: 请求路径={}", path);
 
         // 1. 获取 Token
         String token = request.getHeaders().getFirst("Authorization");
         if (!StringUtils.hasText(token)) {
             token = request.getHeaders().getFirst("token");
         }
-        if (StringUtils.hasText(token) && token.startsWith("Bearer ")) {
+        if (StringUtils.hasText(token) && token.regionMatches(true, 0, "Bearer ", 0, 7)) {
             token = token.substring(7);
         }
 
-        // 2. 尝试解析 Token
-        Long userId = null;
-        String userRole = null;
-
-        if (StringUtils.hasText(token)) {
-            // 如果带了 Token，就尝试解析
-            userId = jwtUtil.getUserId(token);
-            userRole = jwtUtil.getUserRole(token);
+        // 2. 白名单 + 无 token：直接放行，不需要透传信息
+        boolean isWhiteList = isWhitelist(path);
+        if (isWhiteList && !StringUtils.hasText(token)) {
+            log.info("AuthGlobalFilter: 白名单 + 无token：直接放行");
+            return chain.filter(exchange);
         }
 
-        // 3. 鉴权逻辑
-        if (userId == null) {
-            // 情况 A：没带 Token，或者 Token 无效
-            if (isWhitelist(path)) {
-                // 如果是白名单接口，允许游客访问 -> 直接放行 (不透传 Header)
-                return chain.filter(exchange);
-            } else {
-                // 如果不是白名单，必须登录 -> 拦截报错
+        // 3. token不存在或为空
+        if (!StringUtils.hasText(token)) {
+            log.warn("AuthGlobalFilter: token无效或不存在");
+            return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
+        }
+
+        // 到这 token 肯定是存在的
+        // 4. 先校验 Redis 登录态缓存：user:login:{token} -> userId
+        String loginCacheKey = Constants.USER_LOGIN_CACHE_PREFIX + token;
+        String userIdStr = redisUtil.get(loginCacheKey, String.class);
+
+        if (!StringUtils.hasText(userIdStr)) {
+            // 如果是白名单接口，Token 无效时应该放行（当做游客），而不是报错
+            if (isWhiteList) {
+                log.info("AuthGlobalFilter: 白名单接口Token失效，降级为游客访问");
+                // 清除可能存在的脏 Header，防止下游误判
+                ServerHttpRequest.Builder builder = request.mutate();
+                builder.headers(headers -> {
+                    headers.remove("userId");
+                    headers.remove("userRole");
+                });
+                return chain.filter(exchange.mutate().request(builder.build()).build());
+            }
+
+            // 如果不是白名单，且userId是无效的，则直接禁止
+            log.warn("AuthGlobalFilter: redis缓存中的token不存在或过期");
+            return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
+        }
+
+        // 5. 刷新用户登录过期时间
+        redisUtil.expire(loginCacheKey, Constants.USER_LOGIN_CACHE_EXPIRE_TIME);
+        log.info("AuthGlobalFilter: 刷新登录缓存TTL，userId={}", userIdStr);
+
+        // 6. 校验密码版本号，所以先拿到jwt中的版本号
+        Long jwtPasswordVersion = jwtUtil.getPasswordVersion(token);
+        if (jwtPasswordVersion == null) {
+            log.warn("AuthGlobalFilter: JWT中缺少passwordVersion");
+            return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
+        }
+
+        // 7. 再从缓存/数据库获取当前用户的 passwordVersion
+        String versionCacheKey = Constants.USER_PASSWORD_VERSION_CACHE_PREFIX + userIdStr;
+        String cachedVersionStr = redisUtil.get(versionCacheKey, String.class);
+        Long currentVersion;
+
+        if (cachedVersionStr != null) {
+            currentVersion = Long.valueOf(cachedVersionStr);
+        } else {
+            // 调用 User Service 查询
+            Result<UserPasswordVersionDTO> result = userInterface.getPasswordVersion(Long.parseLong(userIdStr));
+            if (!result.isSuccess(result) || result.getData() == null) {
+                log.warn("AuthGlobalFilter: 用户不存在，userId={}", userIdStr);
                 return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
             }
+
+            UserPasswordVersionDTO user = result.getData();
+            currentVersion = user.getPasswordVersion() != null ? user.getPasswordVersion() : 0L;
+            redisUtil.set(versionCacheKey, String.valueOf(currentVersion), Constants.USER_LOGIN_CACHE_EXPIRE_TIME);
         }
 
-        // 4. Token 有效 -> 透传身份信息
-        // 走到这里说明 userId 一定有值，不管是不是白名单，都把身份传下去
-        ServerHttpRequest.Builder builder = request.mutate()
-                .header("userId", String.valueOf(userId));
+        // 8. 比对版本号（JWT中的版本号 必须等于 当前用户的版本号）
+        if (!jwtPasswordVersion.equals(currentVersion)) {
+            log.warn("AuthGlobalFilter: 密码版本号不匹配，jwtVersion={}, currentVersion={}, 可能已重置密码",
+                    jwtPasswordVersion, currentVersion);
 
+            redisUtil.del(loginCacheKey); // 删除失效的登录态缓存
+            redisUtil.del(versionCacheKey); // 删除版本号缓存（强制下次重新查询）
+            return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
+        }
+        log.info("AuthGlobalFilter: 密码版本号校验通过，userId={}, version={}", userIdStr, currentVersion);
+
+        // 9. 解析 JWT 中的 role（辅助信息，失败不影响登录）
+        String userRole = null;
+        try {
+            userRole = jwtUtil.getUserRole(token);
+        } catch (Exception e) {
+            log.warn("AuthGlobalFilter: Failed to parse userRole from JWT", e);
+        }
+
+        // 10. 透传身份信息（防 Header 注入）
+        ServerHttpRequest.Builder builder = request.mutate();
+        builder.headers(headers -> {
+            headers.remove("userId");
+            headers.remove("userRole");
+        });
+        builder.header("userId", userIdStr);
         if (StringUtils.hasText(userRole)) {
             builder.header("userRole", userRole);
         }
 
-        log.info("AuthGlobalFilter: Pass with userId={}, role={}", userId, userRole);
-        ServerHttpRequest mutableReq = builder.build();
-
-        return chain.filter(exchange.mutate().request(mutableReq).build());
+        log.info("AuthGlobalFilter: Pass with userId={}, role={}", userIdStr, userRole);
+        return chain.filter(exchange.mutate().request(builder.build()).build());
     }
 
     /**

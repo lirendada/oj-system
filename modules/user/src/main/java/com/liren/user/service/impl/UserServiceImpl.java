@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
+import com.liren.api.problem.dto.user.UserPasswordVersionDTO;
 import com.liren.common.core.constant.Constants;
 import com.liren.common.core.context.UserContext;
 import com.liren.common.redis.RedisUtil;
@@ -52,23 +53,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
     @Override
     public UserLoginVO login(UserLoginDTO userLoginDTO) {
         String userAccount = userLoginDTO.getUserAccount();
-        String cacheKey = Constants.USER_LOGIN_CACHE_PREFIX + userAccount;
 
-        // 1. 先从 Redis 缓存中查询用户信息
-        UserEntity user = redisUtil.get(cacheKey, UserEntity.class);
-
+        // 1. 直接查询数据库（登录态缓存不存用户信息，必须查DB）
+        LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<>();
+        UserEntity user = userMapper.selectOne(
+                wrapper.eq(UserEntity::getUserAccount, userAccount)
+        );
         if (user == null) {
-            // 2. 缓存未命中，查询数据库
-            LambdaQueryWrapper<UserEntity> wrapper = new LambdaQueryWrapper<>();
-            user = userMapper.selectOne(
-                    wrapper.eq(UserEntity::getUserAccount, userAccount)
-            );
-            if (user == null) {
-                throw new UserException(ResultCode.USER_NOT_FOUND);
-            }
-
-            // 3. 将用户信息写入缓存（30分钟过期）
-            redisUtil.set(cacheKey, user, Constants.USER_LOGIN_CACHE_EXPIRE_TIME);
+            throw new UserException(ResultCode.USER_NOT_FOUND);
         }
 
         // 2. 判断用户是否状态正常
@@ -84,9 +76,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         // 4. 生成 Token (带上 user 角色)
         Map<String, Object> claims = new HashMap<>();
         claims.put("userRole", "user");
-        String token = jwtUtil.createToken(user.getUserId(), claims);
+        Long passwordVersion = user.getPasswordVersion() != null ? user.getPasswordVersion() : 0L;
+        String token = jwtUtil.createToken(user.getUserId(), passwordVersion, claims);
 
-        // 5. 【修改点】组装 VO 返回
+        // 5. 写入登录态缓存：token -> userId
+        String loginCacheKey = Constants.USER_LOGIN_CACHE_PREFIX + token;
+        redisUtil.set(loginCacheKey, user.getUserId().toString(), Constants.USER_LOGIN_CACHE_EXPIRE_TIME);
+
+        // 写入密码版本号缓存（供 Gateway 校验使用）
+        String versionCacheKey = Constants.USER_PASSWORD_VERSION_CACHE_PREFIX + user.getUserId();
+        redisUtil.set(versionCacheKey, String.valueOf(passwordVersion), Constants.USER_LOGIN_CACHE_EXPIRE_TIME);
+
+        // 6. 组装 VO 返回
         UserLoginVO loginVO = new UserLoginVO();
         loginVO.setToken(token);
         loginVO.setUserId(user.getUserId());
@@ -98,7 +99,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
 
     /**
-     * 获取批量用户基本信息
+     * 获取批量用户基本信息（内部接口，用于排行榜）
      */
     @Override
     public List<UserBasicInfoDTO> getBatchUserBasicInfo(List<Long> userIds) {
@@ -123,7 +124,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
 
 
     /**
-     * 更新用户的提交统计信息
+     * 更新用户的提交统计信息（内部接口，用于更新用户提交数量）
      */
     @Override
     public boolean updateUserStats(Long userId, boolean isAc) {
@@ -138,7 +139,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
             wrapper.setSql("accepted_count = IFNULL(accepted_count, 0) + 1");
         }
 
-        return this.update(wrapper);
+        boolean result = this.update(wrapper);
+        if(result) {
+            redisUtil.del(Constants.USER_INFO_CACHE_PREFIX + userId);
+        }
+        return result;
     }
 
 
@@ -147,22 +152,26 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
      */
     @Override
     public UserVO getUserInfo(Long userId) {
-        // 1. 查询数据库
-        UserEntity userEntity = this.getById(userId);
+        // 1. 先查询数据库获取基础信息（需要获取 userId 作为缓存 key）
+        String infoCacheKey = Constants.USER_INFO_CACHE_PREFIX + userId;
+        UserEntity user = redisUtil.get(infoCacheKey, UserEntity.class);
 
-        // 2. 判空
-        if (userEntity == null) {
-            throw new UserException(ResultCode.USER_NOT_FOUND);
+        if (user == null) {
+            // 2. 缓存没命中，直接查询数据库
+            user = this.getById(userId);
+            if(user == null) {
+                throw new UserException(ResultCode.USER_NOT_FOUND);
+            }
+
+            // 3. 查询成功，则写入缓存
+            redisUtil.set(infoCacheKey, user, Constants.USER_LOGIN_CACHE_EXPIRE_TIME);
         }
 
-        // 3. 转换为 VO
+        // 4. 转换为 VO
         UserVO userVO = new UserVO();
-        // 因为 UserVO 的字段名和 UserEntity 的字段名（驼峰）现在完全一致，
-        // 所以 BeanUtil 可以自动拷贝所有对应字段
-        BeanUtil.copyProperties(userEntity, userVO);
+        BeanUtil.copyProperties(user, userVO);
 
-        // 4. 头像默认值处理
-        // 如果数据库里 avatar 是 null 或者 空字符串，给个默认头像
+        // 头像默认值处理
         if (userVO.getAvatar() == null || userVO.getAvatar().isEmpty()) {
             userVO.setAvatar("https://p.ssl.qhimg.com/sdm/480_480_/t01520a1bd1802ae864.jpg");
         }
@@ -200,6 +209,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         UserEntity userEntity = new UserEntity();
         userEntity.setUserAccount(userAccount);
         userEntity.setPassword(encryptPassword);
+        userEntity.setPasswordVersion(0L);
         // 默认昵称与账号相同，用户后续可修改
         userEntity.setNickName(userAccount);
         // 初始状态正常
@@ -268,9 +278,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         // 4. 删除验证码
         redisUtil.del(redisKey);
 
-        // 5. 清除用户登录缓存（密码已修改，需要重新登录）
-        String cacheKey = Constants.USER_LOGIN_CACHE_PREFIX + user.getUserAccount();
-        redisUtil.del(cacheKey);
+        // 5. 密码版本号+1，并且进行更新（使所有旧 token 失效）
+        user.setPasswordVersion((user.getPasswordVersion() != null ? user.getPasswordVersion() : 0L) + 1);
+        this.updateById(user);
+
+        // 6. 删除用户信息缓存
+        String infoCacheKey = Constants.USER_INFO_CACHE_PREFIX + user.getUserId();
+        redisUtil.del(infoCacheKey);
+
+        // 7. 删除密码版本号缓存（强制 Gateway 重新从数据库读取，和旧token进行校验）
+        String versionCacheKey = Constants.USER_PASSWORD_VERSION_CACHE_PREFIX + user.getUserId();
+        redisUtil.del(versionCacheKey);
     }
 
 
@@ -288,7 +306,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         UserEntity updateUser = new UserEntity();
         updateUser.setUserId(userId);
 
-        // 2. 仅更新非空字段，严格对应数据库字段
+        // 更新非空字段
         if (StringUtils.hasText(req.getNickName())) {
             updateUser.setNickName(req.getNickName());
         }
@@ -299,18 +317,31 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
             updateUser.setSchool(req.getSchool());
         }
 
-        // 3. 执行更新
+        // 2. 执行更新
         boolean result = this.updateById(updateUser);
 
-        // 4. 清除用户缓存（如果缓存存在）
+        // 3. 清除用户信息缓存（下次查询会重新从DB加载）
         if (result) {
-            UserEntity user = this.getById(userId);
-            if (user != null) {
-                String cacheKey = Constants.USER_LOGIN_CACHE_PREFIX + user.getUserAccount();
-                redisUtil.del(cacheKey);
-            }
+            String cacheKey = Constants.USER_INFO_CACHE_PREFIX + userId;
+            redisUtil.del(cacheKey);
+        }
+        return result;
+    }
+
+
+    /**
+     * 根据 userId 获取用户信息（内部接口，供 Gateway 调用）
+     */
+    @Override
+    public UserPasswordVersionDTO getPasswordVersion(Long userId) {
+        UserEntity user = this.getById(userId);
+        if(user == null) {
+            throw new UserException(ResultCode.USER_NOT_FOUND);
         }
 
-        return result;
+        UserPasswordVersionDTO versionDTO = new UserPasswordVersionDTO();
+        versionDTO.setUserId(userId);
+        versionDTO.setPasswordVersion(user.getPasswordVersion() != null ? user.getPasswordVersion() : 0L);
+        return versionDTO;
     }
 }

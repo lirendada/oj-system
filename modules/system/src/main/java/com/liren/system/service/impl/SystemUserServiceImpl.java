@@ -46,12 +46,13 @@ public class SystemUserServiceImpl extends ServiceImpl<SystemUserMapper, SystemU
         SystemUserLoginVO responseVO = new SystemUserLoginVO();
         BeanUtil.copyProperties(user, responseVO);
 
-        // 【新增】生成 Token，并硬编码角色为 "admin"
+        // 生成 Token，携带 passwordVersion
         Map<String, Object> claims = new HashMap<>();
         claims.put("userRole", "admin"); // 标记为管理员
-        String token = jwtUtil.createToken(user.getUserId(), claims);
+        Long passwordVersion = user.getPasswordVersion() != null ? user.getPasswordVersion() : 0L;
+        String token = jwtUtil.createToken(user.getUserId(), passwordVersion, claims);
 
-        responseVO.setToken(token); // 设置 Token
+        responseVO.setToken(token);
 
         return responseVO;
     }

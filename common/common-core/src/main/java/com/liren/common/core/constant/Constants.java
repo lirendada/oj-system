@@ -74,18 +74,38 @@ public class Constants {
 
     // ========= 用户缓存 =========
     /**
-     * 用户登录缓存 Key 前缀
-     * 完整 Key: user:login:{userAccount}
-     * 缓存内容: UserEntity 对象
-     * 过期时间: 30 分钟
+     * 登录态缓存 Key 前缀（基于 token）
+     * 完整 Key: user:login:{token}
+     * 缓存内容: userId（Long）
+     * 过期时间: 30 分钟（滑动过期）
      */
     public static final String USER_LOGIN_CACHE_PREFIX = "user:login:";
 
     /**
-     * 用户登录缓存过期时间（秒）
-     * 30 分钟 = 1800 秒
+     * 用户信息缓存 Key 前缀（基于 userId）
+     * 完整 Key: user:info:{userId}
+     * 缓存内容: UserEntity / UserVO（用户完整信息）
+     * 过期时间: 30 分钟（固定过期）
      */
-    public static final Long USER_LOGIN_CACHE_EXPIRE_TIME = 1800L;
+    public static final String USER_INFO_CACHE_PREFIX = "user:info:";
+
+    /**
+     * 用户登录缓存过期时间（秒）
+     * 2小时 = 7200 秒
+     */
+    public static final Long USER_LOGIN_CACHE_EXPIRE_TIME = 7200L;
+
+    public static final String FORGET_PASS_CODE_PREFIX = "user:forget:code:"; // 忘记密码验证码前缀
+    /**
+     * 用户密码版本号缓存 Key 前缀（基于 userId）
+     * 完整 Key: user:version:{userId}
+     * 缓存内容: passwordVersion（Long）
+     * 过期时间: 2小时（与登录态缓存一致）
+     * 用途: Gateway 校验 token 时使用，避免每次请求都查数据库
+     */
+    public static final String USER_PASSWORD_VERSION_CACHE_PREFIX = "user:version:";
+
+
 
 
     // ========= 题目缓存 =========
@@ -133,6 +153,4 @@ public class Constants {
      */
     public static final Long CONTEST_REGISTRATION_CACHE_EXPIRE_TIME = 3600L;
 
-    // ========= 其他 =========
-    public static final String FORGET_PASS_CODE_PREFIX = "user:forget:code:"; // 忘记密码验证码前缀
 }

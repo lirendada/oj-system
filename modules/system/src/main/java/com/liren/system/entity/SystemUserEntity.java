@@ -21,6 +21,11 @@ public class SystemUserEntity extends BaseEntity {
     private String password;
     private String nickName;
 
+    /**
+     * 密码版本号，每次重置密码时递增，用于使旧 token 失效
+     */
+    private Long passwordVersion;
+
     @TableLogic
     private Integer deleted; // 逻辑删除，0表示未删除，1表示已删除
 }

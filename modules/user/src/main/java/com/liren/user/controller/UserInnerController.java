@@ -2,6 +2,7 @@ package com.liren.user.controller;
 
 import com.liren.api.problem.api.user.UserInterface;
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
+import com.liren.api.problem.dto.user.UserPasswordVersionDTO;
 import com.liren.common.core.result.Result;
 import com.liren.user.service.IUserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,5 +32,11 @@ public class UserInnerController implements UserInterface {
     @Operation(summary = "更新用户做题统计")
     public Result<Boolean> updateUserStats(@RequestParam("userId") Long userId, @RequestParam("isAc") Boolean isAc) {
         return Result.success(userService.updateUserStats(userId, isAc));
+    }
+
+    @Override
+    @Operation(summary = "获取用户密码版本号")
+    public Result<UserPasswordVersionDTO> getPasswordVersion(@RequestParam("userId") Long userId) {
+        return Result.success(userService.getPasswordVersion(userId));
     }
 }

@@ -13,6 +13,7 @@ spring:
       - optional:nacos:jwt.yaml
       # 网关自身的路由和白名单配置 (gateway-service-dev.yaml)
       - optional:nacos:${spring.application.name}-${spring.profiles.active}.yaml
+      - optional:nacos:common.yaml
   cloud:
     nacos:
       server-addr: lirendada.art:8848
