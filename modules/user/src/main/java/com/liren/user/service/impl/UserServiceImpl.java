@@ -7,7 +7,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
-import com.liren.api.problem.dto.user.UserPasswordVersionDTO;
 import com.liren.common.core.constant.Constants;
 import com.liren.common.core.context.UserContext;
 import com.liren.common.redis.RedisUtil;
@@ -326,22 +325,5 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
             redisUtil.del(cacheKey);
         }
         return result;
-    }
-
-
-    /**
-     * 根据 userId 获取用户信息（内部接口，供 Gateway 调用）
-     */
-    @Override
-    public UserPasswordVersionDTO getPasswordVersion(Long userId) {
-        UserEntity user = this.getById(userId);
-        if(user == null) {
-            throw new UserException(ResultCode.USER_NOT_FOUND);
-        }
-
-        UserPasswordVersionDTO versionDTO = new UserPasswordVersionDTO();
-        versionDTO.setUserId(userId);
-        versionDTO.setPasswordVersion(user.getPasswordVersion() != null ? user.getPasswordVersion() : 0L);
-        return versionDTO;
     }
 }

@@ -26,4 +26,5 @@ spring:
 oj:
   judge:
     docker:
-      host: tcp://49.235.136.223:2375
+#      host: tcp://49.235.136.223:2375
+      host: tcp://localhost:2375

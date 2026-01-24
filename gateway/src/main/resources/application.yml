@@ -13,7 +13,6 @@ spring:
       - optional:nacos:jwt.yaml
       # 网关自身的路由和白名单配置 (gateway-service-dev.yaml)
       - optional:nacos:${spring.application.name}-${spring.profiles.active}.yaml
-      - optional:nacos:common.yaml
   cloud:
     nacos:
       server-addr: lirendada.art:8848
@@ -24,3 +23,17 @@ spring:
         server-addr: lirendada.art:8848
         namespace: ceaffba5-fad9-4149-a71a-f77956f10897
         file-extension: yaml
+
+  # Redis 配置 (注意这里去掉了 'data' 层级)
+  data:
+    redis:
+      host: 49.235.136.223
+      port: 6379
+      password: 123123
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: 100ms

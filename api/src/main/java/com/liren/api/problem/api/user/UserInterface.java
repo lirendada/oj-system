@@ -1,7 +1,6 @@
 package com.liren.api.problem.api.user;
 
 import com.liren.api.problem.dto.user.UserBasicInfoDTO;
-import com.liren.api.problem.dto.user.UserPasswordVersionDTO;
 import com.liren.common.core.result.Result;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,10 +26,4 @@ public interface UserInterface {
      */
     @PostMapping("/update/stats")
     Result<Boolean> updateUserStats(@RequestParam("userId") Long userId, @RequestParam("isAc") Boolean isAc);
-
-    /**
-     * 根据 userId 获取用户信息（内部接口，供 Gateway 调用）
-     */
-    @GetMapping("/user/inner/get-password-version")
-    Result<UserPasswordVersionDTO> getPasswordVersion(@RequestParam("userId") Long userId);
 }

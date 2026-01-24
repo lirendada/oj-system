@@ -2,8 +2,6 @@ package com.liren.gateway.filter;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.liren.api.problem.api.user.UserInterface;
-import com.liren.api.problem.dto.user.UserPasswordVersionDTO;
 import com.liren.common.core.constant.Constants;
 import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
@@ -14,7 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
@@ -41,10 +38,6 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
 
     @Autowired
     private RedisUtil redisUtil;
-
-    @Autowired
-    @Lazy
-    private UserInterface userInterface;
 
     private final AntPathMatcher antPathMatcher = new AntPathMatcher();
 
@@ -86,21 +79,27 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
         String userIdStr = redisUtil.get(loginCacheKey, String.class);
 
         if (!StringUtils.hasText(userIdStr)) {
-            // 如果是白名单接口，Token 无效时应该放行（当做游客），而不是报错
             if (isWhiteList) {
-                log.info("AuthGlobalFilter: 白名单接口Token失效，降级为游客访问");
-                // 清除可能存在的脏 Header，防止下游误判
+                // 【情况 A】：如果是白名单接口（例如题目列表），Token 失效也允许访问，但要降级为游客
+                log.info("AuthGlobalFilter: 白名单接口Token失效，降级为游客模式放行。path={}", path);
+
+                // 关键：必须要把错误的 userId 抹除，防止下游服务误判
                 ServerHttpRequest.Builder builder = request.mutate();
                 builder.headers(headers -> {
                     headers.remove("userId");
                     headers.remove("userRole");
+                    // 甚至可以把 Authorization 头也去掉，防止下游服务去解析无效 Token
+                    headers.remove("Authorization");
+                    headers.remove("token");
                 });
+                // 直接放行，不报错
                 return chain.filter(exchange.mutate().request(builder.build()).build());
-            }
 
-            // 如果不是白名单，且userId是无效的，则直接禁止
-            log.warn("AuthGlobalFilter: redis缓存中的token不存在或过期");
-            return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
+            } else {
+                // 【情况 B】：如果不是白名单接口（例如提交代码），必须报错
+                log.warn("AuthGlobalFilter: 非白名单接口Token失效，拒绝访问。path={}", path);
+                return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
+            }
         }
 
         // 5. 刷新用户登录过期时间
@@ -114,25 +113,19 @@ public class AuthGlobalFilter implements GlobalFilter, Ordered {
             return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
         }
 
-        // 7. 再从缓存/数据库获取当前用户的 passwordVersion
+        // 7. 从缓存获取当前用户的 passwordVersion
         String versionCacheKey = Constants.USER_PASSWORD_VERSION_CACHE_PREFIX + userIdStr;
         String cachedVersionStr = redisUtil.get(versionCacheKey, String.class);
-        Long currentVersion;
 
-        if (cachedVersionStr != null) {
-            currentVersion = Long.valueOf(cachedVersionStr);
-        } else {
-            // 调用 User Service 查询
-            Result<UserPasswordVersionDTO> result = userInterface.getPasswordVersion(Long.parseLong(userIdStr));
-            if (!result.isSuccess(result) || result.getData() == null) {
-                log.warn("AuthGlobalFilter: 用户不存在，userId={}", userIdStr);
-                return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
-            }
-
-            UserPasswordVersionDTO user = result.getData();
-            currentVersion = user.getPasswordVersion() != null ? user.getPasswordVersion() : 0L;
-            redisUtil.set(versionCacheKey, String.valueOf(currentVersion), Constants.USER_LOGIN_CACHE_EXPIRE_TIME);
+        // 如果缓存中没有版本号（说明：过期了 / 服务重启 / 密码重置导致删除了缓存），直接拒绝，强制前端重新登录
+        if (!StringUtils.hasText(cachedVersionStr)) {
+            log.warn("AuthGlobalFilter: 密码版本号缓存不存在(可能已重置或过期)，userId={}", userIdStr);
+            // 顺便清理掉登录态缓存，确保彻底登出
+            redisUtil.del(loginCacheKey);
+            return unauthorizedResponse(exchange, ResultCode.UNAUTHORIZED);
         }
+
+        Long currentVersion = Long.valueOf(cachedVersionStr);
 
         // 8. 比对版本号（JWT中的版本号 必须等于 当前用户的版本号）
         if (!jwtPasswordVersion.equals(currentVersion)) {
