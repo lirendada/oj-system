@@ -49,4 +49,9 @@ public interface IUserService extends IService<UserEntity> {
      * 更新当前登录用户信息
      */
     boolean updateMyInfo(UserUpdateMyDTO userUpdateMyDTO);
+
+    /**
+     * 更新用户状态（如禁用/拉黑）
+     */
+    Boolean updateUserStatus(Long userId, Integer status);
 }

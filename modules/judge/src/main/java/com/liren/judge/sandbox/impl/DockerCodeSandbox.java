@@ -24,9 +24,10 @@ import org.springframework.util.StopWatch;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 
 /**
@@ -39,10 +40,55 @@ public class DockerCodeSandbox implements CodeSandbox {
     @Autowired
     private DockerClient dockerClient;
 
+    // 分语言黑名单 (Key: 语言, Value: 黑名单正则列表)
+    private static final Map<String, List<Pattern>> SECURITY_RULES = new HashMap<>();
+
+    static {
+        // Java 黑名单: 封禁文件读写、网络、反射、运行时执行
+        List<String> javaRegex = Arrays.asList(
+                "\\bFiles\\b", "\\bFile\\b", "\\bFileInputStream\\b", "\\bFileOutputStream\\b", // 文件IO
+                "\\bRuntime\\b", "\\bexec\\b", "\\bProcessBuilder\\b", "\\bProcess\\b",         // 进程执行
+                "\\bnet\\b", "\\bSocket\\b", "\\bServerSocket\\b",                              // 网络
+                "\\breflect\\b", "\\bMethod\\b", "\\bClass\\.forName\\b"                        // 反射(防绕过)
+        );
+        SECURITY_RULES.put("java", compileRegex(javaRegex));
+
+        // C++ 黑名单: 封禁系统调用
+        List<String> cppRegex = Arrays.asList(
+                "\\bsystem\\b", "\\bfork\\b", "\\bopen\\b", "\\bexec\\b", "\\bsocket\\b"
+        );
+        SECURITY_RULES.put("cpp", compileRegex(cppRegex));
+        SECURITY_RULES.put("c++", compileRegex(cppRegex));
+
+        // Python 黑名单
+        List<String> pythonRegex = Arrays.asList(
+                "\\bos\\.system\\b", "\\bos\\.popen\\b", "\\bsubprocess\\b", "\\bexec\\b", "\\beval\\b", "\\bopen\\b",
+                "\\bsocket\\b", "\\burllib\\b", "\\bhttp\\.client\\b", "\\brequests\\b"
+        );
+        SECURITY_RULES.put("python", compileRegex(pythonRegex));
+        SECURITY_RULES.put("python3", compileRegex(pythonRegex));
+    }
+
+    // 辅助方法：预编译正则
+    private static List<Pattern> compileRegex(List<String> rules) {
+        return rules.stream().map(Pattern::compile).collect(Collectors.toList());
+    }
+
     @Override
     public ExecuteCodeResponse executeCode(ExecuteCodeRequest executeCodeRequest) {
         String code = executeCodeRequest.getCode();
         String language = executeCodeRequest.getLanguage();
+
+        // --- 恶意代码静态安全检查 ---
+        FoundWord found = checkMaliciousCode(code, language); // 传入语言
+        if (found != null) {
+            return ExecuteCodeResponse.builder()
+                    .status(SandboxRunStatusEnum.SYSTEM_ERROR.getCode()) // 保持约定
+                    .message("MaliciousCode detected: Sensitive operation [" + found.word + "]")
+                    .build();
+        }
+        // ----------------------------------
+
         List<String> inputList = executeCodeRequest.getInputList();
         String containerId = null;
 
@@ -85,9 +131,11 @@ public class DockerCodeSandbox implements CodeSandbox {
             HostConfig hostConfig = new HostConfig();
             hostConfig.withMemory(Constants.SANDBOX_MEMORY_LIMIT); // 限制内存 100MB
             hostConfig.withCpuCount(Constants.SANDBOX_CPU_COUNT); // 限制 CPU 1核
+            hostConfig.withPidsLimit(64L); // 限制进程数，防止 Fork 炸弹
 
             CreateContainerCmd containerCmd = dockerClient.createContainerCmd(Constants.SANDBOX_IMAGE)
                     .withHostConfig(hostConfig)
+                    .withNetworkDisabled(true) // 彻底禁用网络！防止反弹Shell、挖矿、内网攻击
                     .withAttachStdin(true)
                     .withAttachStderr(true)
                     .withAttachStdout(true)
@@ -257,5 +305,38 @@ public class DockerCodeSandbox implements CodeSandbox {
             result.setErrorMessage(e.getMessage());
         }
         return result;
+    }
+
+    /**
+     * 简单的静态代码检查辅助类
+     */
+    @Data
+    private static class FoundWord {
+        String word;
+        public FoundWord(String word) { this.word = word; }
+    }
+
+    /**
+     * 检查方法：支持正则、分语言
+     */
+    private FoundWord checkMaliciousCode(String code, String language) {
+        if (StrUtil.isBlank(code)) {
+            return null;
+        }
+        String langKey = language.toLowerCase().trim();
+        List<Pattern> patterns = SECURITY_RULES.get(langKey);
+
+        // 如果没有该语言的规则，默认不检查或使用通用规则（视策略而定）
+        if (patterns == null) {
+            return null;
+        }
+
+        for (Pattern pattern : patterns) {
+            // 使用 Matcher 进行正则匹配
+            if (pattern.matcher(code).find()) {
+                return new FoundWord(pattern.pattern()); // 返回匹配到的正则模式
+            }
+        }
+        return null;
     }
 }

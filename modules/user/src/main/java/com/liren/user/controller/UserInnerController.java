@@ -31,4 +31,10 @@ public class UserInnerController implements UserInterface {
     public Result<Boolean> updateUserStats(@RequestParam("userId") Long userId, @RequestParam("isAc") Boolean isAc) {
         return Result.success(userService.updateUserStats(userId, isAc));
     }
+
+    @Override
+    @Operation(summary = "更新用户状态（如禁用/拉黑）")
+    public Result<Boolean> updateUserStatus(@RequestParam("userId") Long userId, @RequestParam("status") Integer status) {
+        return Result.success(userService.updateUserStatus(userId, status));
+    }
 }

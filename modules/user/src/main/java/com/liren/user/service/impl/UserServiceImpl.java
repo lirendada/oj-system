@@ -326,4 +326,30 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserEntity> impleme
         }
         return result;
     }
+
+
+    /**
+     * 更新用户状态（如禁用/拉黑）
+     */
+    @Override
+    public Boolean updateUserStatus(Long userId, Integer status) {
+        // 1. 更新状态 + 版本号+1（使所有旧 token 失效）
+        Boolean result = this.lambdaUpdate()
+                .eq(UserEntity::getUserId, userId)
+                .set(UserEntity::getStatus, status)
+                .setSql("password_version = password_version + 1")
+                .update();
+
+        if (Boolean.TRUE.equals(result)) {
+            // 2. 删除用户信息缓存
+            String infoCacheKey = Constants.USER_INFO_CACHE_PREFIX + userId;
+            redisUtil.del(infoCacheKey);
+
+            // 3. 删除密码版本号缓存（强制 Gateway 重新从数据库读取）
+            String versionCacheKey = Constants.USER_PASSWORD_VERSION_CACHE_PREFIX + userId;
+            redisUtil.del(versionCacheKey);
+        }
+
+        return result;
+    }
 }

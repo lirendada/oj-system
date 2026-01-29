@@ -1,6 +1,7 @@
 package com.liren.judge.mq;
 
 import com.liren.api.problem.api.problem.ProblemInterface;
+import com.liren.api.problem.api.user.UserInterface;
 import com.liren.api.problem.dto.problem.ProblemSubmitUpdateDTO;
 import com.liren.api.problem.dto.problem.SubmitRecordDTO;
 import com.liren.api.problem.dto.problem.TestCaseDTO;
@@ -8,6 +9,7 @@ import com.liren.common.core.constant.Constants;
 import com.liren.common.core.enums.JudgeResultEnum;
 import com.liren.common.core.enums.SandboxRunStatusEnum;
 import com.liren.common.core.enums.SubmitStatusEnum;
+import com.liren.common.core.enums.UserStatusEnum;
 import com.liren.common.core.result.Result;
 import com.liren.common.core.result.ResultCode;
 import com.liren.judge.exception.JudgeException;
@@ -40,6 +42,9 @@ public class JudgeReceiver {
     @Autowired
     private JudgeManager judgeManager;
 
+    @Autowired
+    private UserInterface userInterface;
+
     @RabbitListener(queues = Constants.JUDGE_QUEUE, ackMode = "MANUAL")
     public void receiveJudgeMessage(Long submitId, Channel channel, @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag) {
         log.info("接收到判题任务, submitId: {}", submitId);
@@ -58,6 +63,7 @@ public class JudgeReceiver {
             String userCode = submitRecord.getData().getCode();
             String language = submitRecord.getData().getLanguage();
             Long problemId = submitRecord.getData().getProblemId();
+            Long userId = submitRecord.getData().getUserId();
 
             // 获取测试用例
             Result<List<TestCaseDTO>> testCaseResult = problemService.getTestCases(problemId);
@@ -81,6 +87,28 @@ public class JudgeReceiver {
 
             log.info("调用 Docker 沙箱...");
             ExecuteCodeResponse executeResponse = codeSandbox.executeCode(executeRequest);
+
+            // --- 恶意代码检测与处理 ---
+            // 检查沙箱返回的消息是否标记为恶意代码 (根据 Sandbox 约定的特定字符串前缀)
+            if (executeResponse.getMessage() != null && executeResponse.getMessage().startsWith("MaliciousCode")) {
+                log.warn("检测到恶意代码提交！SubmitId: {}, UserId: {}, Info: {}", submitId, userId, executeResponse.getMessage());
+
+                // 1. 调用 User 服务封禁用户
+                userInterface.updateUserStatus(userId, UserStatusEnum.FORBIDDEN.getCode());
+
+                // 2. 更新判题状态为失败 (或者定义一个新的状态 "SE-Malicious")
+                ProblemSubmitUpdateDTO failDTO = new ProblemSubmitUpdateDTO();
+                failDTO.setSubmitId(submitId);
+                failDTO.setStatus(SubmitStatusEnum.FAILED.getCode());
+                failDTO.setErrorMessage("系统检测到恶意代码，您的账号已被封禁。原因: " + executeResponse.getMessage());
+                problemService.updateSubmitResult(failDTO);
+
+                // 3. 确认消息并直接返回，不再继续判题
+                channel.basicAck(deliveryTag, false);
+                return;
+            }
+            // ------------------------------------
+
             log.info("沙箱执行结束, 状态: {}", SandboxRunStatusEnum.getByCode(executeResponse.getStatus()).getMessage());
 
             // ------------------------------------------

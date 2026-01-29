@@ -26,4 +26,12 @@ public interface UserInterface {
      */
     @PostMapping("/update/stats")
     Result<Boolean> updateUserStats(@RequestParam("userId") Long userId, @RequestParam("isAc") Boolean isAc);
+
+    /**
+     * 更新用户状态（如禁用/拉黑）
+     * @param userId 用户ID
+     * @param status 状态码 (0-禁用, 1-正常)
+     */
+    @PostMapping("/update/status")
+    Result<Boolean> updateUserStatus(@RequestParam("userId") Long userId, @RequestParam("status") Integer status);
 }
