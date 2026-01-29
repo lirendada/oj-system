@@ -14,17 +14,21 @@ import com.liren.judge.sandbox.CodeSandbox;
 import com.liren.judge.sandbox.model.ExecuteCodeRequest;
 import com.liren.judge.sandbox.model.ExecuteCodeResponse;
 import com.liren.judge.sandbox.model.JudgeInfo;
+import jakarta.annotation.PostConstruct;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StopWatch;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -39,6 +43,51 @@ public class DockerCodeSandbox implements CodeSandbox {
 
     @Autowired
     private DockerClient dockerClient;
+
+    @Value("${oj.judge.docker.pool-size}")
+    private int poolSize;
+
+    // 容器池
+    private final BlockingQueue<String> containerPool = new LinkedBlockingQueue<>();
+
+    /**
+     * 系统启动时初始化容器池
+     */
+    @PostConstruct
+    public void init() {
+        log.info("开始初始化 Docker 容器池，大小: {}", poolSize);
+        for (int i = 0; i < poolSize; i++) {
+            String containerId = createAndStartContainer();
+            containerPool.offer(containerId);
+        }
+        log.info("Docker 容器池初始化完成");
+    }
+
+    /**
+     * 创建并启动一个常驻容器
+     */
+    private String createAndStartContainer() {
+        HostConfig hostConfig = new HostConfig();
+        hostConfig.withMemory(Constants.SANDBOX_MEMORY_LIMIT);
+        hostConfig.withCpuCount(Constants.SANDBOX_CPU_COUNT);
+        hostConfig.withPidsLimit(64L); // 防止 Fork 炸弹
+
+        CreateContainerCmd containerCmd = dockerClient.createContainerCmd(Constants.SANDBOX_IMAGE)
+                .withHostConfig(hostConfig)
+                .withNetworkDisabled(true) // 禁网
+                .withAttachStdin(true)
+                .withAttachStderr(true)
+                .withAttachStdout(true)
+                .withTty(true)
+                .withWorkingDir("/app") // 指定固定工作目录
+                .withCmd("tail", "-f", "/dev/null"); // 关键：让容器死循环运行，不退出
+
+        CreateContainerResponse response = containerCmd.exec();
+        String containerId = response.getId();
+        dockerClient.startContainerCmd(containerId).exec();
+        log.info("创建新容器: {}", containerId);
+        return containerId;
+    }
 
     // 分语言黑名单 (Key: 语言, Value: 黑名单正则列表)
     private static final Map<String, List<Pattern>> SECURITY_RULES = new HashMap<>();
@@ -79,7 +128,7 @@ public class DockerCodeSandbox implements CodeSandbox {
         String code = executeCodeRequest.getCode();
         String language = executeCodeRequest.getLanguage();
 
-        // --- 恶意代码静态安全检查 ---
+        // 1. 恶意代码静态安全检查
         FoundWord found = checkMaliciousCode(code, language); // 传入语言
         if (found != null) {
             return ExecuteCodeResponse.builder()
@@ -93,7 +142,12 @@ public class DockerCodeSandbox implements CodeSandbox {
         String containerId = null;
 
         try {
-            // 1. 预处理：根据语言确定文件名和命令
+            // 2. 从池中获取容器 (阻塞等待)
+            log.info("等待获取容器...");
+            containerId = containerPool.take();
+            log.info("获取到容器: {}", containerId);
+
+            // 3. 预处理：根据语言确定文件名和命令
             String sourceFileName;
             String compileCmd;
             String runCmdFormat; // 格式化字符串，%s 为文件名或类名
@@ -126,39 +180,14 @@ public class DockerCodeSandbox implements CodeSandbox {
                             .build();
             }
 
-            // 2. 创建容器
-            log.info("创建容器中... 语言: {}", language);
-            HostConfig hostConfig = new HostConfig();
-            hostConfig.withMemory(Constants.SANDBOX_MEMORY_LIMIT); // 限制内存 100MB
-            hostConfig.withCpuCount(Constants.SANDBOX_CPU_COUNT); // 限制 CPU 1核
-            hostConfig.withPidsLimit(64L); // 限制进程数，防止 Fork 炸弹
+            // 4. 清理环境 (复用前先清理上次遗留的文件)
+            cleanContainer(containerId);
 
-            CreateContainerCmd containerCmd = dockerClient.createContainerCmd(Constants.SANDBOX_IMAGE)
-                    .withHostConfig(hostConfig)
-                    .withNetworkDisabled(true) // 彻底禁用网络！防止反弹Shell、挖矿、内网攻击
-                    .withAttachStdin(true)
-                    .withAttachStderr(true)
-                    .withAttachStdout(true)
-                    .withTty(true) // 保持后台运行
-                    .withWorkingDir("/");
-
-            CreateContainerResponse createContainerResponse = containerCmd.exec();
-            containerId = createContainerResponse.getId();
-
-            // 3. 启动容器
-            dockerClient.startContainerCmd(containerId).exec();
-            log.info("容器已启动, ID: {}", containerId);
-
-            // 4. 将用户代码上传到容器
-            // 需要先把 String 存为 Main.java 字节数组，然后打成 tar 包上传
-            // 这里我们用一个辅助方法处理
+            // 5. 上传代码
             uploadFileToContainer(containerId, sourceFileName, code.getBytes(StandardCharsets.UTF_8));
 
-            // 5. 编译代码(如果需要)
-            if(StrUtil.isNotBlank(compileCmd)) {
-                log.info("编译中: {}", compileCmd);
-
-                // split(" ") 简单切分，对于复杂命令可能不够，但在当前场景够用
+            // 6. 编译
+            if (StrUtil.isNotBlank(compileCmd)) {
                 ExecMessage compileMsg = execCmd(containerId, compileCmd.split(" "));
                 if (compileMsg.getExitValue() != 0) {
                     return ExecuteCodeResponse.builder()
@@ -168,7 +197,7 @@ public class DockerCodeSandbox implements CodeSandbox {
                 }
             }
 
-            // 6. 执行代码 (针对每个输入用例)
+            // 7. 执行代码 (针对每个输入用例)
             List<String> outputList = new ArrayList<>();
             long maxTime = 0;
 
@@ -200,7 +229,7 @@ public class DockerCodeSandbox implements CodeSandbox {
                 outputList.add(runMsg.getMessage().trim()); // 收集输出
             }
 
-            // 7. 封装结果
+            // 8. 封装结果
             JudgeInfo judgeInfo = new JudgeInfo();
             judgeInfo.setTime(maxTime);
             judgeInfo.setMemory(0L); // TODO:Docker 较难精确获取每次运行内存，暂存0，后续可优化
@@ -213,21 +242,43 @@ public class DockerCodeSandbox implements CodeSandbox {
 
         } catch (Exception e) {
             log.error("沙箱执行异常", e);
+            // 如果容器坏了(比如OOM死掉)，需要尝试重建
+            if (containerId != null) {
+                try {
+                    // 简单检查容器状态，或者直接销毁旧的创建一个新的
+                    dockerClient.removeContainerCmd(containerId).withForce(true).exec();
+                    containerId = createAndStartContainer(); // 替换为新容器
+                } catch (Exception ex) {
+                    log.error("容器重建失败", ex);
+                    containerId = null; // 防止finally归还坏容器
+                }
+            }
             return ExecuteCodeResponse.builder()
                     .status(SandboxRunStatusEnum.SYSTEM_ERROR.getCode())
                     .message(e.getMessage())
                     .build();
         } finally {
-            // 8. 销毁容器 (非常重要！否则服务器内存会炸)
+            // 8. 归还容器
             if (containerId != null) {
-                try {
-                    dockerClient.stopContainerCmd(containerId).exec();
-                    dockerClient.removeContainerCmd(containerId).exec();
-                    log.info("容器已销毁: {}", containerId);
-                } catch (Exception e) {
-                    log.error("销毁容器失败", e);
+                // 再次清理以防万一，或者留给下次使用前清理(推荐使用前清理效率更高，这里为了安全可以双重清理)
+                // 这里我们选择直接归还，下次使用时在步骤 4 清理，减少一次exec交互
+                boolean offerSuccess = containerPool.offer(containerId);
+                if (!offerSuccess) {
+                    log.error("容器归还失败，队列已满? ID: {}", containerId);
                 }
             }
+        }
+    }
+
+    /**
+     * 清理容器内的文件 (删除工作目录下的所有文件)
+     */
+    private void cleanContainer(String containerId) {
+        try {
+            // 简单的 rm -rf ./* (注意工作目录是 /app)
+            execCmd(containerId, new String[]{"sh", "-c", "rm -rf ./*"});
+        } catch (Exception e) {
+            log.error("清理容器失败", e);
         }
     }
 
